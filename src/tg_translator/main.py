@@ -11,6 +11,7 @@ from telegram.ext import (
     MessageHandler,
     filters,
 )
+from telegram.request import HTTPXRequest
 
 from tg_translator.translator_service import TranslatorService
 
@@ -92,7 +93,11 @@ def main() -> None:
         sys.exit(1)
 
     # Create the Application and pass it your bot's token.
-    application = Application.builder().token(token).post_init(post_init).build()
+    # Set higher timeouts to avoid connection issues
+    request = HTTPXRequest(connect_timeout=20.0, read_timeout=20.0, write_timeout=20.0)
+    application = (
+        Application.builder().token(token).request(request).post_init(post_init).build()
+    )
 
     # Command handlers
     application.add_handler(CommandHandler("start", start_command))
