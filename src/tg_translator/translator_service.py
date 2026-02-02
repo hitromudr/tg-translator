@@ -2,9 +2,9 @@ import asyncio
 import logging
 import re
 from concurrent.futures import ThreadPoolExecutor
-from typing import Optional
+from typing import Optional, cast
 
-from deep_translator import GoogleTranslator
+from deep_translator import GoogleTranslator  # type: ignore
 
 logger = logging.getLogger(__name__)
 
@@ -35,10 +35,10 @@ class TranslatorService:
                 # Source contains Cyrillic -> Translate to English
                 # Note: deep-translator handles 'auto' source well,
                 # but we decide direction based on content presence.
-                return self._to_en.translate(text)
+                return cast(str, self._to_en.translate(text))
             else:
                 # Source does not contain Cyrillic (likely English/Latin) -> Translate to Russian
-                return self._to_ru.translate(text)
+                return cast(str, self._to_ru.translate(text))
         except Exception as e:
             logger.error(f"Translation service error: {e}")
             return None

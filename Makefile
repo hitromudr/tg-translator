@@ -6,8 +6,9 @@
 .DEFAULT_GOAL := help
 
 # Python interpreter
-PYTHON := python3
-PIP := pip
+VENV := venv
+PYTHON := $(VENV)/bin/python
+PIP := $(VENV)/bin/pip
 
 help: ## Show this help message
 	@echo "Usage: make [target]"
@@ -23,16 +24,16 @@ dev-install: ## Install dependencies with dev tools
 	$(PIP) install black isort mypy pytest pytest-cov types-requests
 
 format: ## Format code using black and isort
-	isort src tests
-	black src tests
+	$(PYTHON) -m isort src tests
+	$(PYTHON) -m black src tests
 
 lint: ## Run static analysis (mypy, black check, isort check)
-	black --check src tests
-	isort --check-only src tests
-	mypy src
+	$(PYTHON) -m black --check src tests
+	$(PYTHON) -m isort --check-only src tests
+	$(PYTHON) -m mypy src
 
 test: ## Run tests
-	pytest
+	$(PYTHON) -m pytest
 
 test-backend: test ## Alias for test (Meta-rule compliance)
 
