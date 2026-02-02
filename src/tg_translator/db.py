@@ -22,16 +22,14 @@ class Database:
         try:
             with self._get_connection() as conn:
                 cursor = conn.cursor()
-                cursor.execute(
-                    """
+                cursor.execute("""
                     CREATE TABLE IF NOT EXISTS dictionary (
                         chat_id INTEGER NOT NULL,
                         source_term TEXT NOT NULL,
                         target_term TEXT NOT NULL,
                         PRIMARY KEY (chat_id, source_term)
                     )
-                    """
-                )
+                    """)
                 conn.commit()
         except Exception as e:
             logger.error(f"Failed to initialize database: {e}")

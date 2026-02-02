@@ -40,7 +40,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     Handle incoming text messages.
     Translates the message and replies to the user.
     """
-    if not update.message or not update.message.text:
+    if not update.message or not update.message.text or not update.effective_chat:
         return
 
     original_text = update.message.text
@@ -68,7 +68,7 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     Handle incoming voice messages.
     Transcribes audio, translates text, and replies.
     """
-    if not update.message or not update.message.voice:
+    if not update.message or not update.message.voice or not update.effective_chat:
         return
 
     user = update.message.from_user
@@ -153,7 +153,7 @@ async def dict_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     /dict remove <source>
     /dict list
     """
-    if not update.message:
+    if not update.message or not update.effective_chat:
         return
 
     if not context.args:
