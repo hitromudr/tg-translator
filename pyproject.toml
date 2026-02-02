@@ -31,6 +31,9 @@ testpaths = [
 pythonpath = [
     "src"
 ]
+filterwarnings = [
+    "ignore::DeprecationWarning:speech_recognition.*",
+]
 
 [tool.black]
 line-length = 88
