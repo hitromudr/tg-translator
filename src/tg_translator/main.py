@@ -4,7 +4,12 @@ import os
 import sys
 
 from dotenv import load_dotenv
-from telegram import BotCommand, Update
+from telegram import (
+    BotCommand,
+    BotCommandScopeAllGroupChats,
+    BotCommandScopeAllPrivateChats,
+    Update,
+)
 from telegram.constants import ParseMode
 from telegram.ext import (
     Application,
@@ -222,8 +227,20 @@ async def post_init(application: Application) -> None:
         BotCommand("help", "Help / Справка"),
         BotCommand("dict", "Manage dictionary / Словарь"),
     ]
+    # Set commands for default scope
     await application.bot.set_my_commands(commands)
-    logger.info("Bot commands set successfully.")
+
+    # Set commands for private chats
+    await application.bot.set_my_commands(
+        commands, scope=BotCommandScopeAllPrivateChats()
+    )
+
+    # Set commands for group chats
+    await application.bot.set_my_commands(
+        commands, scope=BotCommandScopeAllGroupChats()
+    )
+
+    logger.info("Bot commands set successfully for all scopes.")
 
 
 def main() -> None:
