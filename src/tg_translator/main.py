@@ -1,9 +1,11 @@
+import html
 import logging
 import os
 import sys
 
 from dotenv import load_dotenv
 from telegram import BotCommand, Update
+from telegram.constants import ParseMode
 from telegram.ext import (
     Application,
     CommandHandler,
@@ -46,7 +48,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
     if translation and translation != original_text:
         # We reply to the original message with the translation
-        await update.message.reply_text(translation)
+        safe_translation = html.escape(translation)
+        spoiler_text = f'<span class="tg-spoiler">{safe_translation}</span>'
+        await update.message.reply_text(spoiler_text, parse_mode=ParseMode.HTML)
         logger.info(f"Sent translation: {translation[:50]}...")
     else:
         logger.debug("No translation performed or translation identical to source.")
