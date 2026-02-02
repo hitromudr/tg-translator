@@ -56,6 +56,60 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         logger.debug("No translation performed or translation identical to source.")
 
 
+async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """
+    Handle incoming voice messages.
+    Transcribes audio, translates text, and replies.
+    """
+    if not update.message or not update.message.voice:
+        return
+
+    user = update.message.from_user
+    username = user.username if user else "Unknown"
+    logger.info(f"Received voice message from {username}")
+
+    try:
+        voice_file = await update.message.voice.get_file()
+
+        # Create temp directory if not exists
+        os.makedirs("tmp", exist_ok=True)
+
+        file_path = f"tmp/voice_{update.message.voice.file_unique_id}.ogg"
+        await voice_file.download_to_drive(file_path)
+
+        transcription = await translator_service.transcribe_audio(file_path)
+
+        if transcription:
+            logger.info(f"Transcribed text: {transcription[:50]}...")
+            translation = await translator_service.translate_message(transcription)
+
+            response_parts = []
+            response_parts.append(f"🎤 <i>{html.escape(transcription)}</i>")
+
+            if translation and translation.lower() != transcription.lower():
+                safe_translation = html.escape(translation)
+                response_parts.append(
+                    f'<span class="tg-spoiler">{safe_translation}</span>'
+                )
+
+            await update.message.reply_text(
+                "\n".join(response_parts), parse_mode=ParseMode.HTML
+            )
+            logger.info("Sent transcription/translation for voice message.")
+        else:
+            logger.info("Could not transcribe voice message.")
+
+    except Exception as e:
+        logger.error(f"Error handling voice message: {e}")
+    finally:
+        # Clean up the downloaded ogg file
+        if "file_path" in locals() and os.path.exists(file_path):
+            try:
+                os.remove(file_path)
+            except OSError:
+                pass
+
+
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Send a welcome message when the command /start is issued."""
     if not update.message:
@@ -112,6 +166,9 @@ def main() -> None:
     application.add_handler(
         MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message)
     )
+
+    # Filter for voice messages
+    application.add_handler(MessageHandler(filters.VOICE, handle_voice))
 
     # Run the bot until the user presses Ctrl-C
     logger.info("Starting bot...")

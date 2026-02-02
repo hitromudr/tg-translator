@@ -1,10 +1,14 @@
 import asyncio
 import logging
+import os
 import re
+import uuid
 from concurrent.futures import ThreadPoolExecutor
 from typing import Optional, cast
 
+import speech_recognition as sr  # type: ignore
 from deep_translator import GoogleTranslator  # type: ignore
+from pydub import AudioSegment  # type: ignore
 
 logger = logging.getLogger(__name__)
 
@@ -56,6 +60,53 @@ class TranslatorService:
 
         loop = asyncio.get_running_loop()
         return await loop.run_in_executor(self._executor, self._translate_sync, text)
+
+    def _transcribe_sync(self, file_path: str) -> Optional[str]:
+        """
+        Synchronous transcription logic.
+        """
+        wav_path = f"{file_path}_{uuid.uuid4()}.wav"
+        try:
+            # Convert audio (likely OGG) to WAV for SpeechRecognition
+            sound = AudioSegment.from_file(file_path)
+            sound.export(wav_path, format="wav")
+
+            recognizer = sr.Recognizer()
+            with sr.AudioFile(wav_path) as source:
+                audio_data = recognizer.record(source)
+                # Try recognizing as Russian first
+                try:
+                    text = recognizer.recognize_google(audio_data, language="ru-RU")
+                    return cast(str, text)
+                except sr.UnknownValueError:
+                    # If failed, try English
+                    try:
+                        text = recognizer.recognize_google(audio_data, language="en-US")
+                        return cast(str, text)
+                    except sr.UnknownValueError:
+                        logger.debug("Speech recognition could not understand audio")
+                        return None
+                except sr.RequestError as e:
+                    logger.error(f"Google Speech Recognition service error: {e}")
+                    return None
+        except Exception as e:
+            logger.error(f"Transcription error: {e}")
+            return None
+        finally:
+            if os.path.exists(wav_path):
+                try:
+                    os.remove(wav_path)
+                except OSError:
+                    pass
+
+    async def transcribe_audio(self, file_path: str) -> Optional[str]:
+        """
+        Asynchronously transcribe audio file.
+        """
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(
+            self._executor, self._transcribe_sync, file_path
+        )
 
     def shutdown(self) -> None:
         """Cleanup resources."""

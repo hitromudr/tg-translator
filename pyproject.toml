@@ -9,6 +9,8 @@ dependencies = [
     "python-telegram-bot>=20.0",
     "deep-translator>=1.11.0",
     "python-dotenv>=1.0.0",
+    "SpeechRecognition>=3.10.0",
+    "pydub>=0.25.1",
 ]
 requires-python = ">=3.10"
 readme = "README.md"
