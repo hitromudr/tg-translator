@@ -1,6 +1,7 @@
 import html
 import logging
 import os
+import shlex
 import sys
 
 from dotenv import load_dotenv
@@ -143,10 +144,11 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         "💬 <b>Перевод:</b> Просто пишите текст или отправляйте голосовые — я переведу их автоматически.\n\n"
         "📖 <b>Словарь (если я ошибаюсь в именах):</b>\n"
         "• <code>/dict add Ян Ian</code> — научить меня переводить 'Ян' как 'Ian' (падежи добавлю сам!).\n"
+        '• <code>/dict add "фраза с пробелами" Перевод</code> — используйте кавычки для фраз.\n'
         "• <code>/dict list</code> — посмотреть список замен.\n"
         "• <code>/dict remove Ян</code> — забыть замену.\n\n"
         "🇬🇧 <b>English:</b>\n"
-        "Just type messages. Use <code>/dict add Source Target</code> to fix specific translations.",
+        'Just type messages. Use <code>/dict add "Source Phrase" Target</code> to fix specific translations.',
         parse_mode=ParseMode.HTML,
     )
 
@@ -161,22 +163,35 @@ async def dict_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     if not update.message or not update.effective_chat:
         return
 
-    if not context.args:
+    # Parse arguments using shlex to support quotes for phrases
+    try:
+        # text includes the command itself, e.g. "/dict add ..."
+        args = shlex.split(update.message.text)
+    except ValueError as e:
+        await update.message.reply_text(f"Error parsing arguments: {e}")
+        return
+
+    # args[0] is the command (e.g. /dict), args[1] is subcommand
+    if len(args) < 2:
         await update.message.reply_text(
-            "Usage:\n/dict add <word> <translation>\n/dict remove <word>\n/dict list"
+            "Usage:\n/dict add <word> <translation>\n/dict remove <word>\n/dict list\n\n"
+            'Use quotes for phrases: /dict add "phrase one" translation'
         )
         return
 
-    subcommand = context.args[0].lower()
+    subcommand = args[1].lower()
     chat_id = update.effective_chat.id
 
     if subcommand == "add":
-        if len(context.args) < 3:
-            await update.message.reply_text("Usage: /dict add <word> <translation>")
+        if len(args) < 4:
+            await update.message.reply_text(
+                'Usage: /dict add <word> <translation>\nUse quotes for phrases: /dict add "source phrase" target'
+            )
             return
-        source = context.args[1]
-        # target might contain spaces, so join the rest
-        target = " ".join(context.args[2:])
+        source = args[2]
+        # Target is everything else. Since shlex stripped quotes from individual args,
+        # joining them with space is a reasonable approximation for the target.
+        target = " ".join(args[3:])
 
         # Use heuristic inflector to generate variations (e.g. Russian cases)
         variations = HeuristicInflector.get_variations(source)
@@ -198,10 +213,12 @@ async def dict_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
             await update.message.reply_text("Failed to add term.")
 
     elif subcommand == "remove":
-        if len(context.args) < 2:
-            await update.message.reply_text("Usage: /dict remove <word>")
+        if len(args) < 3:
+            await update.message.reply_text(
+                'Usage: /dict remove <word>\nUse quotes for phrases: /dict remove "source phrase"'
+            )
             return
-        source = context.args[1]
+        source = args[2]
         if db.remove_term(chat_id, source):
             await update.message.reply_text(f"Removed: '{source}'")
         else:
