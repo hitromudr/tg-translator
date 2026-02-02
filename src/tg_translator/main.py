@@ -15,6 +15,8 @@ from telegram.ext import (
 )
 from telegram.request import HTTPXRequest
 
+from tg_translator.db import Database
+from tg_translator.inflector import HeuristicInflector
 from tg_translator.translator_service import TranslatorService
 
 # Enable logging
@@ -26,8 +28,11 @@ logging.getLogger("httpx").setLevel(logging.WARNING)
 
 logger = logging.getLogger(__name__)
 
+# Initialize database
+db = Database()
+
 # Initialize translator service globally or pass via context (global for simplicity here)
-translator_service = TranslatorService()
+translator_service = TranslatorService(db=db)
 
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -44,7 +49,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
     logger.info(f"Received message from {username}: {original_text[:50]}...")
 
-    translation = await translator_service.translate_message(original_text)
+    translation = await translator_service.translate_message(
+        original_text, update.effective_chat.id
+    )
 
     if translation and translation != original_text:
         # We reply to the original message with the translation
@@ -81,7 +88,9 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 
         if transcription:
             logger.info(f"Transcribed text: {transcription[:50]}...")
-            translation = await translator_service.translate_message(transcription)
+            translation = await translator_service.translate_message(
+                transcription, update.effective_chat.id
+            )
 
             response_parts = []
             response_parts.append(f"🎤 <i>{html.escape(transcription)}</i>")
@@ -130,11 +139,81 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     )
 
 
+async def dict_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """
+    Handle dictionary commands:
+    /dict add <source> <target>
+    /dict remove <source>
+    /dict list
+    """
+    if not update.message:
+        return
+
+    if not context.args:
+        await update.message.reply_text(
+            "Usage:\n/dict add <word> <translation>\n/dict remove <word>\n/dict list"
+        )
+        return
+
+    subcommand = context.args[0].lower()
+    chat_id = update.effective_chat.id
+
+    if subcommand == "add":
+        if len(context.args) < 3:
+            await update.message.reply_text("Usage: /dict add <word> <translation>")
+            return
+        source = context.args[1]
+        # target might contain spaces, so join the rest
+        target = " ".join(context.args[2:])
+
+        # Use heuristic inflector to generate variations (e.g. Russian cases)
+        variations = HeuristicInflector.get_variations(source)
+        # Ensure we always try to add at least the exact word provided
+        if not variations:
+            variations = {source}
+
+        count = 0
+        for variant in variations:
+            if db.add_term(chat_id, variant, target):
+                count += 1
+
+        if count > 0:
+            msg = f"Added: '{source}' -> '{target}'"
+            if count > 1:
+                msg += f"\nAnd {count - 1} automatic variations (cases/forms)."
+            await update.message.reply_text(msg)
+        else:
+            await update.message.reply_text("Failed to add term.")
+
+    elif subcommand == "remove":
+        if len(context.args) < 2:
+            await update.message.reply_text("Usage: /dict remove <word>")
+            return
+        source = context.args[1]
+        if db.remove_term(chat_id, source):
+            await update.message.reply_text(f"Removed: '{source}'")
+        else:
+            await update.message.reply_text(f"Term '{source}' not found.")
+
+    elif subcommand == "list":
+        terms = db.get_terms(chat_id)
+        if not terms:
+            await update.message.reply_text("Dictionary is empty.")
+        else:
+            msg = "Custom Dictionary:\n"
+            for source, target in terms:
+                msg += f"- {source} -> {target}\n"
+            await update.message.reply_text(msg)
+    else:
+        await update.message.reply_text("Unknown subcommand. Use add, remove, or list.")
+
+
 async def post_init(application: Application) -> None:
     """Set up the bot's commands."""
     commands = [
         BotCommand("start", "Start bot / Запуск"),
         BotCommand("help", "Help / Справка"),
+        BotCommand("dict", "Manage dictionary / Словарь"),
     ]
     await application.bot.set_my_commands(commands)
     logger.info("Bot commands set successfully.")
@@ -160,6 +239,7 @@ def main() -> None:
     # Command handlers
     application.add_handler(CommandHandler("start", start_command))
     application.add_handler(CommandHandler("help", help_command))
+    application.add_handler(CommandHandler("dict", dict_command))
 
     # on non command i.e message - translate the message on Telegram
     # Filter for text messages that are not commands

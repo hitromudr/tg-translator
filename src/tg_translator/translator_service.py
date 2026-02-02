@@ -10,11 +10,14 @@ import speech_recognition as sr  # type: ignore
 from deep_translator import GoogleTranslator  # type: ignore
 from pydub import AudioSegment  # type: ignore
 
+from .db import Database
+
 logger = logging.getLogger(__name__)
 
 
 class TranslatorService:
-    def __init__(self) -> None:
+    def __init__(self, db: Optional[Database] = None) -> None:
+        self.db = db
         # We initialize translators for specific directions.
         # Deep Translator uses 'auto' for source detection which is convenient.
         self._to_en = GoogleTranslator(source="auto", target="en")
@@ -55,7 +58,32 @@ class TranslatorService:
             logger.error(f"Translation service error: {e}")
             return None
 
-    async def translate_message(self, text: str) -> Optional[str]:
+    def _apply_custom_dictionary(self, text: str, chat_id: Optional[int]) -> str:
+        if not self.db or chat_id is None:
+            return text
+
+        terms = self.db.get_terms(chat_id)
+        if not terms:
+            return text
+
+        # Sort by length of source term (descending) to match longest phrases first
+        terms.sort(key=lambda x: len(x[0]), reverse=True)
+
+        processed_text = text
+        for source, target in terms:
+            # Create a regex for case-insensitive replacement with word boundaries
+            # escaping source to handle special regex chars
+            try:
+                pattern = re.compile(r"\b" + re.escape(source) + r"\b", re.IGNORECASE)
+                processed_text = pattern.sub(target, processed_text)
+            except Exception as e:
+                logger.error(f"Regex error for term '{source}': {e}")
+
+        return processed_text
+
+    async def translate_message(
+        self, text: str, chat_id: Optional[int] = None
+    ) -> Optional[str]:
         """
         Asynchronously translates text.
 
@@ -66,8 +94,13 @@ class TranslatorService:
         if not text or not text.strip():
             return None
 
+        # Apply dictionary substitutions before translation
+        text_to_translate = self._apply_custom_dictionary(text, chat_id)
+
         loop = asyncio.get_running_loop()
-        return await loop.run_in_executor(self._executor, self._translate_sync, text)
+        return await loop.run_in_executor(
+            self._executor, self._translate_sync, text_to_translate
+        )
 
     def _transcribe_sync(self, file_path: str) -> Optional[str]:
         """
