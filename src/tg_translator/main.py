@@ -3,8 +3,14 @@ import os
 import sys
 
 from dotenv import load_dotenv
-from telegram import Update
-from telegram.ext import Application, ContextTypes, MessageHandler, filters
+from telegram import BotCommand, Update
+from telegram.ext import (
+    Application,
+    CommandHandler,
+    ContextTypes,
+    MessageHandler,
+    filters,
+)
 
 from tg_translator.translator_service import TranslatorService
 
@@ -45,6 +51,36 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         logger.debug("No translation performed or translation identical to source.")
 
 
+async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Send a welcome message when the command /start is issued."""
+    if not update.message:
+        return
+    await update.message.reply_text(
+        "Привет! Я бот-переводчик. Я автоматически перевожу сообщения в этом чате.\n"
+        "Hi! I am a translator bot. I automatically translate messages in this chat."
+    )
+
+
+async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Send a help message when the command /help is issued."""
+    if not update.message:
+        return
+    await update.message.reply_text(
+        "Просто пишите сообщения, и я буду их переводить.\n"
+        "Just type messages and I will translate them."
+    )
+
+
+async def post_init(application: Application) -> None:
+    """Set up the bot's commands."""
+    commands = [
+        BotCommand("start", "Start bot / Запуск"),
+        BotCommand("help", "Help / Справка"),
+    ]
+    await application.bot.set_my_commands(commands)
+    logger.info("Bot commands set successfully.")
+
+
 def main() -> None:
     """Start the bot."""
     # Load environment variables
@@ -56,7 +92,11 @@ def main() -> None:
         sys.exit(1)
 
     # Create the Application and pass it your bot's token.
-    application = Application.builder().token(token).build()
+    application = Application.builder().token(token).post_init(post_init).build()
+
+    # Command handlers
+    application.add_handler(CommandHandler("start", start_command))
+    application.add_handler(CommandHandler("help", help_command))
 
     # on non command i.e message - translate the message on Telegram
     # Filter for text messages that are not commands
