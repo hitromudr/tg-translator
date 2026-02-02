@@ -22,12 +22,17 @@
       file:
         path: "{{ app_dir }}"
         state: directory
-        mode: '0755'
+        mode: "0755"
 
     - name: Copy pyproject.toml
       copy:
         src: ../pyproject.toml
         dest: "{{ app_dir }}/pyproject.toml"
+
+    - name: Copy README.md
+      copy:
+        src: ../README.md
+        dest: "{{ app_dir }}/README.md"
 
     - name: Copy source code
       copy:
