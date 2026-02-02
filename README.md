@@ -1,86 +1,87 @@
 # Telegram Translator Bot
 
-A Telegram bot that automatically translates messages in group chats. It detects the language of the message and translates it:
-- Cyrillic text (Russian, etc.) -> English
-- Other text (English, Latin, etc.) -> Russian
+**TG-Translator** — это удобный Телеграм-бот для групповых чатов, который автоматически переводит сообщения "на лету".
 
-## Features
+Главная особенность — ненавязчивость. Бот присылает перевод в виде **спойлера** (скрытого текста). Перевод виден только тем, кто кликнет на него, сохраняя чистоту переписки.
 
-- **Automatic Language Detection**: Uses a simple heuristic (presence of Cyrillic characters) to determine the translation direction.
-- **Privacy First**: Only translates text messages, ignores commands and other media unless configured otherwise.
-- **Easy Deployment**: Docker-ready (planned) and Ansible playbook included.
+## 🚀 Возможности
 
-## Requirements
+*   **Автоматическое определение языка**:
+    *   Если текст содержит кириллицу (Русский) → переводит на **Английский**.
+    *   Если текст на латинице (English и др.) → переводит на **Русский**.
+*   **Режим "Анти-спам"**: Перевод отправляется в формате `||спойлера||`.
+*   **Приватность**: Бот игнорирует команды и служебные сообщения, реагируя только на текст.
 
-- Python 3.10+
-- A Telegram Bot Token (from [@BotFather](https://t.me/BotFather))
+## 🛠 Требования
 
-## Installation
+*   Python 3.10+
+*   Токен бота от [@BotFather](https://t.me/BotFather)
 
-1. **Clone the repository:**
-   ```bash
-   git clone <repository-url>
-   cd tg-translator
-   ```
+## ⚙️ Установка и Запуск
 
-2. **Set up the environment:**
-   Create a `.env` file in the root directory and add your bot token:
-   ```bash
-   cp config_example.txt .env
-   # Edit .env and set TELEGRAM_BOT_TOKEN
-   ```
-
-3. **Install dependencies:**
-   Using `make`:
-   ```bash
-   make install
-   ```
-   Or manually:
-   ```bash
-   python3 -m venv venv
-   source venv/bin/activate
-   pip install -e .
-   ```
-
-## Usage
-
-1. **Run the bot:**
-   ```bash
-   make run
-   ```
-
-2. **Add the bot to a group:**
-   Add the bot to your Telegram group. Ensure it has access to messages (you might need to disable "Group Privacy" in BotFather settings if you want it to see all messages, or just mention it/reply to it depending on setup. *Note: Current implementation listens to all text messages, so Privacy Mode must be disabled in BotFather for the bot to see messages in groups without being an admin or explicitly mentioned.*)
-
-3. **Send a message:**
-   - Type in Russian -> Bot replies with English translation.
-   - Type in English -> Bot replies with Russian translation.
-
-## Development
-
-### Running Tests
+### 1. Подготовка
+Клонируйте репозиторий и создайте файл конфигурации:
 
 ```bash
-make test
+git clone https://github.com/hitromudr/tg-translator.git
+cd tg-translator
+
+# Копируем пример конфига
+cp config_example.txt .env
 ```
 
-### Code Formatting and Linting
+Отредактируйте файл `.env`, вставив туда токен вашего бота:
+```ini
+TELEGRAM_BOT_TOKEN=ващ_токен_здесь
+```
+
+### 2. Установка зависимостей
+Рекомендуется использовать виртуальное окружение. Проект включает `Makefile` для удобства:
 
 ```bash
-make format
-make lint
+make install
 ```
 
-## Deployment
+### 3. Локальный запуск
+```bash
+make run
+```
 
-The project includes an Ansible playbook for deployment.
+## 📝 Настройка в Telegram (Важно!)
 
-1. Update `deploy/inventory` with your server details.
-2. Run:
-   ```bash
-   make deploy
-   ```
+Чтобы бот мог видеть и переводить сообщения в групповых чатах, необходимо отключить **Group Privacy**. Без этого он будет видеть только команды и упоминания.
 
-## License
+1.  Напишите [@BotFather](https://t.me/BotFather).
+2.  Отправьте команду `/mybots`.
+3.  Выберите вашего бота.
+4.  Перейдите в **Bot Settings** → **Group Privacy**.
+5.  Нажмите **Turn off**.
+
+После этого добавьте бота в чат (или удалите и добавьте снова, если он уже там).
+
+## 💻 Разработка
+
+В проекте предусмотрены команды для тестирования и линтинга:
+
+*   `make test` — запуск тестов.
+*   `make format` — автоформатирование кода (black, isort).
+*   `make lint` — проверка типов и стиля кода.
+
+## 🌐 Деплой
+
+Проект готов к развертыванию через **Ansible**.
+
+1.  Настройте сервер в `deploy/inventory`.
+2.  Запустите плейбук:
+    ```bash
+    make deploy
+    ```
+
+Для просмотра логов на удаленном сервере:
+```bash
+make logs
+```
+
+## 📄 Лицензия
 
 MIT
