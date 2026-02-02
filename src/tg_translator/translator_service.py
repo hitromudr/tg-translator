@@ -39,10 +39,18 @@ class TranslatorService:
                 # Source contains Cyrillic -> Translate to English
                 # Note: deep-translator handles 'auto' source well,
                 # but we decide direction based on content presence.
-                return cast(str, self._to_en.translate(text))
+                translation = cast(str, self._to_en.translate(text))
+                # If translation is identical to source (e.g. mixed languages), try the other direction
+                if translation and translation.lower().strip() == text.lower().strip():
+                    translation = cast(str, self._to_ru.translate(text))
+                return translation
             else:
                 # Source does not contain Cyrillic (likely English/Latin) -> Translate to Russian
-                return cast(str, self._to_ru.translate(text))
+                translation = cast(str, self._to_ru.translate(text))
+                # If translation is identical to source, try the other direction
+                if translation and translation.lower().strip() == text.lower().strip():
+                    translation = cast(str, self._to_en.translate(text))
+                return translation
         except Exception as e:
             logger.error(f"Translation service error: {e}")
             return None
@@ -69,6 +77,10 @@ class TranslatorService:
         try:
             # Convert audio (likely OGG) to WAV for SpeechRecognition
             sound = AudioSegment.from_file(file_path)
+
+            # Add 500ms silence to prevent cut-offs at the end
+            sound += AudioSegment.silent(duration=500)
+
             sound.export(wav_path, format="wav")
 
             recognizer = sr.Recognizer()
