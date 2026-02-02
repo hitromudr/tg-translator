@@ -1,7 +1,7 @@
 # Task: Custom Dictionary Support
 
 ## Status
-- [ ] In Progress
+- [x] Completed
 
 ## Description
 Implement a custom dictionary feature that allows users to define specific translations for words or phrases within a chat. This is particularly useful for names (e.g., "Ian") or technical terms that the translation API misinterprets.
