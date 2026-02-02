@@ -134,8 +134,15 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     if not update.message:
         return
     await update.message.reply_text(
-        "Просто пишите сообщения, и я буду их переводить.\n"
-        "Just type messages and I will translate them."
+        "🤖 <b>Справка:</b>\n\n"
+        "💬 <b>Перевод:</b> Просто пишите текст или отправляйте голосовые — я переведу их автоматически.\n\n"
+        "📖 <b>Словарь (если я ошибаюсь в именах):</b>\n"
+        "• <code>/dict add Ian Ян</code> — научить меня переводить 'Ian' как 'Ян' (падежи добавлю сам!).\n"
+        "• <code>/dict list</code> — посмотреть список замен.\n"
+        "• <code>/dict remove Ian</code> — забыть замену.\n\n"
+        "🇬🇧 <b>English:</b>\n"
+        "Just type messages. Use <code>/dict add Source Target</code> to fix specific translations.",
+        parse_mode=ParseMode.HTML,
     )
 
 
