@@ -33,25 +33,50 @@ class TranslatorService:
         """
         return bool(re.search(r"[а-яА-ЯёЁ]", text))
 
-    def _translate_sync(self, text: str) -> Optional[str]:
+    def _translate_sync(
+        self, text: str, original_is_cyrillic: Optional[bool] = None
+    ) -> Optional[str]:
         """
         Synchronous translation logic to be run in an executor.
         """
         try:
-            if self._is_cyrillic(text):
+            # Use original text detection if provided, otherwise detect on current text
+            is_source_cyrillic = (
+                original_is_cyrillic
+                if original_is_cyrillic is not None
+                else self._is_cyrillic(text)
+            )
+
+            if is_source_cyrillic:
                 # Source contains Cyrillic -> Translate to English
                 # Note: deep-translator handles 'auto' source well,
                 # but we decide direction based on content presence.
                 translation = cast(str, self._to_en.translate(text))
+
                 # If translation is identical to source (e.g. mixed languages), try the other direction
-                if translation and translation.lower().strip() == text.lower().strip():
+                # Only perform fallback if we didn't force the direction based on original text
+                should_fallback = (
+                    translation
+                    and translation.lower().strip() == text.lower().strip()
+                    and original_is_cyrillic is None
+                )
+
+                if should_fallback:
                     translation = cast(str, self._to_ru.translate(text))
                 return translation
             else:
                 # Source does not contain Cyrillic (likely English/Latin) -> Translate to Russian
                 translation = cast(str, self._to_ru.translate(text))
+
                 # If translation is identical to source, try the other direction
-                if translation and translation.lower().strip() == text.lower().strip():
+                # Only perform fallback if we didn't force the direction based on original text
+                should_fallback = (
+                    translation
+                    and translation.lower().strip() == text.lower().strip()
+                    and original_is_cyrillic is None
+                )
+
+                if should_fallback:
                     translation = cast(str, self._to_en.translate(text))
                 return translation
         except Exception as e:
@@ -94,12 +119,18 @@ class TranslatorService:
         if not text or not text.strip():
             return None
 
+        # Detect language on original text to preserve direction even if dictionary replaces everything
+        original_is_cyrillic = self._is_cyrillic(text)
+
         # Apply dictionary substitutions before translation
         text_to_translate = self._apply_custom_dictionary(text, chat_id)
 
         loop = asyncio.get_running_loop()
         return await loop.run_in_executor(
-            self._executor, self._translate_sync, text_to_translate
+            self._executor,
+            self._translate_sync,
+            text_to_translate,
+            original_is_cyrillic,
         )
 
     def _transcribe_sync(self, file_path: str) -> Optional[str]:
