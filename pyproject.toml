@@ -1,0 +1,45 @@
+[project]
+name = "tg-translator"
+version = "0.1.0"
+description = "Telegram bot for translating messages in a group chat"
+authors = [
+    {name = "Developer", email = "dev@example.com"},
+]
+dependencies = [
+    "python-telegram-bot>=20.0",
+    "deep-translator>=1.11.0",
+    "python-dotenv>=1.0.0",
+]
+requires-python = ">=3.10"
+readme = "README.md"
+license = {text = "MIT"}
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/tg_translator"]
+
+[tool.pytest.ini_options]
+addopts = "-ra -q"
+testpaths = [
+    "tests",
+]
+pythonpath = [
+    "src"
+]
+
+[tool.black]
+line-length = 88
+target-version = ['py310']
+
+[tool.isort]
+profile = "black"
+
+[tool.mypy]
+python_version = "3.10"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+check_untyped_defs = true

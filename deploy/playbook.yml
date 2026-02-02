@@ -1,0 +1,89 @@
+---
+- name: Deploy TG Translator Bot
+  hosts: tg_translator_hosts
+  become: yes
+  vars:
+    app_dir: /opt/tg-translator
+    venv_dir: "{{ app_dir }}/venv"
+    service_name: tg-translator
+
+  tasks:
+    - name: Install system dependencies
+      apt:
+        name:
+          - python3
+          - python3-pip
+          - python3-venv
+          - git
+        state: present
+        update_cache: yes
+
+    - name: Create application directory
+      file:
+        path: "{{ app_dir }}"
+        state: directory
+        mode: '0755'
+
+    - name: Copy pyproject.toml
+      copy:
+        src: ../pyproject.toml
+        dest: "{{ app_dir }}/pyproject.toml"
+
+    - name: Copy source code
+      copy:
+        src: ../src
+        dest: "{{ app_dir }}/"
+
+    - name: Copy .env file (if present locally)
+      copy:
+        src: ../.env
+        dest: "{{ app_dir }}/.env"
+      ignore_errors: yes
+
+    - name: Create virtual environment
+      command: python3 -m venv {{ venv_dir }}
+      args:
+        creates: "{{ venv_dir }}"
+
+    - name: Upgrade pip in venv
+      command: "{{ venv_dir }}/bin/pip install --upgrade pip"
+
+    - name: Install dependencies
+      command: "{{ venv_dir }}/bin/pip install ."
+      args:
+        chdir: "{{ app_dir }}"
+
+    - name: Create systemd service file
+      copy:
+        dest: /etc/systemd/system/{{ service_name }}.service
+        content: |
+          [Unit]
+          Description=Telegram Translator Bot
+          After=network.target
+
+          [Service]
+          Type=simple
+          User=root
+          WorkingDirectory={{ app_dir }}
+          EnvironmentFile=-{{ app_dir }}/.env
+          ExecStart={{ venv_dir }}/bin/python -m tg_translator.main
+          Restart=always
+          RestartSec=10
+
+          [Install]
+          WantedBy=multi-user.target
+      notify: Restart service
+
+    - name: Ensure service is enabled and started
+      systemd:
+        name: "{{ service_name }}"
+        enabled: yes
+        state: started
+        daemon_reload: yes
+
+  handlers:
+    - name: Restart service
+      systemd:
+        name: "{{ service_name }}"
+        state: restarted
+        daemon_reload: yes
