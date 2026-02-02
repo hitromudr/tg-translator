@@ -28,6 +28,7 @@
       copy:
         src: ../pyproject.toml
         dest: "{{ app_dir }}/pyproject.toml"
+      notify: Restart service
 
     - name: Copy README.md
       copy:
@@ -38,12 +39,14 @@
       copy:
         src: ../src
         dest: "{{ app_dir }}/"
+      notify: Restart service
 
     - name: Copy .env file (if present locally)
       copy:
         src: ../.env
         dest: "{{ app_dir }}/.env"
       ignore_errors: yes
+      notify: Restart service
 
     - name: Create virtual environment
       command: python3 -m venv {{ venv_dir }}
@@ -51,12 +54,18 @@
         creates: "{{ venv_dir }}"
 
     - name: Upgrade pip in venv
-      command: "{{ venv_dir }}/bin/pip install --upgrade pip"
+      pip:
+        name: pip
+        state: latest
+        virtualenv: "{{ venv_dir }}"
 
     - name: Install dependencies
-      command: "{{ venv_dir }}/bin/pip install ."
-      args:
+      pip:
+        name: "."
+        editable: yes
+        virtualenv: "{{ venv_dir }}"
         chdir: "{{ app_dir }}"
+      notify: Restart service
 
     - name: Create systemd service file
       copy:
