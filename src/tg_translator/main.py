@@ -53,7 +53,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
     original_text = update.message.text
     user = update.message.from_user
-    username = user.username if user else "Unknown"
+    if user:
+        username = user.username or user.first_name
+    else:
+        username = "Unknown"
 
     logger.info(f"Received message from {username}: {original_text[:50]}...")
 
@@ -80,7 +83,10 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         return
 
     user = update.message.from_user
-    username = user.username if user else "Unknown"
+    if user:
+        username = user.username or user.first_name
+    else:
+        username = "Unknown"
     logger.info(f"Received voice message from {username}")
 
     try:
