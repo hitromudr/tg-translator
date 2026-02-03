@@ -1,4 +1,5 @@
 import html
+import json
 import logging
 import os
 import shlex
@@ -146,9 +147,14 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         "• <code>/dict add Ян Ian</code> — научить меня переводить 'Ян' как 'Ian' (падежи добавлю сам!).\n"
         '• <code>/dict add "фраза с пробелами" Перевод</code> — используйте кавычки для фраз.\n'
         "• <code>/dict list</code> — посмотреть список замен.\n"
-        "• <code>/dict remove Ян</code> — забыть замену.\n\n"
+        "• <code>/dict remove Ян</code> — забыть замену.\n"
+        "• <code>/dict export</code> — получить код для переноса словаря.\n"
+        "• <code>/dict import CODE</code> — загрузить словарь по коду.\n\n"
+        "🌍 <b>Языки / Languages:</b>\n"
+        "• <code>/lang set ru de</code> — переключить пару на Русский-Немецкий.\n"
+        "• <code>/lang reset</code> — сброс (ru-en).\n\n"
         "🇬🇧 <b>English:</b>\n"
-        'Just type messages. Use <code>/dict add "Source Phrase" Target</code> to fix specific translations.',
+        "Just type messages. Use <code>/dict</code> to fix translations, <code>/lang</code> to switch languages.",
         parse_mode=ParseMode.HTML,
     )
 
@@ -159,8 +165,10 @@ async def dict_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     /dict add <source> <target>
     /dict remove <source>
     /dict list
+    /dict export
+    /dict import <code >
     """
-    if not update.message or not update.effective_chat:
+    if not update.message or not update.effective_chat or not update.message.text:
         return
 
     # Parse arguments using shlex to support quotes for phrases
@@ -174,13 +182,23 @@ async def dict_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     # args[0] is the command (e.g. /dict), args[1] is subcommand
     if len(args) < 2:
         await update.message.reply_text(
-            "Usage:\n/dict add <word> <translation>\n/dict remove <word>\n/dict list\n\n"
+            "Usage:\n"
+            "/dict add <word> <translation>\n"
+            "/dict remove <word>\n"
+            "/dict list\n"
+            "/dict export\n"
+            "/dict import <code>\n\n"
             'Use quotes for phrases: /dict add "phrase one" translation'
         )
         return
 
     subcommand = args[1].lower()
     chat_id = update.effective_chat.id
+
+    # Get current language pair to use for dictionary operations
+    l1, l2 = db.get_languages(chat_id)
+    langs = sorted([l1, l2])
+    lang_pair = f"{langs[0]}-{langs[1]}"
 
     if subcommand == "add":
         if len(args) < 4:
@@ -201,11 +219,11 @@ async def dict_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 
         count = 0
         for variant in variations:
-            if db.add_term(chat_id, variant, target):
+            if db.add_term(chat_id, variant, target, lang_pair):
                 count += 1
 
         if count > 0:
-            msg = f"Added: '{source}' -> '{target}'"
+            msg = f"Added ({l1}-{l2}): '{source}' -> '{target}'"
             if count > 1:
                 msg += f"\nAnd {count - 1} automatic variations (cases/forms)."
             await update.message.reply_text(msg)
@@ -219,22 +237,122 @@ async def dict_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
             )
             return
         source = args[2]
-        if db.remove_term(chat_id, source):
-            await update.message.reply_text(f"Removed: '{source}'")
+        if db.remove_term(chat_id, source, lang_pair):
+            await update.message.reply_text(f"Removed ({l1}-{l2}): '{source}'")
         else:
             await update.message.reply_text(f"Term '{source}' not found.")
 
     elif subcommand == "list":
-        terms = db.get_terms(chat_id)
+        terms = db.get_terms(chat_id, lang_pair)
         if not terms:
-            await update.message.reply_text("Dictionary is empty.")
+            await update.message.reply_text(f"Dictionary is empty for {l1}-{l2}.")
         else:
-            msg = "Custom Dictionary:\n"
+            msg = f"Custom Dictionary ({l1}-{l2}):\n"
             for source, target in terms:
                 msg += f"- {source} -> {target}\n"
             await update.message.reply_text(msg)
+
+    elif subcommand == "export":
+        terms = db.get_terms(chat_id, lang_pair)
+        if not terms:
+            await update.message.reply_text("Dictionary is empty, nothing to export.")
+            return
+
+        data = json.dumps(terms)
+        code = db.create_export(data)
+        if code:
+            await update.message.reply_text(
+                f"Dictionary exported! Code: <code>{code}</code>\n"
+                "Valid for 24 hours. Use /dict import to load in another chat.",
+                parse_mode=ParseMode.HTML,
+            )
+        else:
+            await update.message.reply_text("Failed to create export.")
+
+    elif subcommand == "import":
+        if len(args) < 3:
+            await update.message.reply_text("Usage: /dict import <CODE>")
+            return
+        code = args[2]
+        data_str = db.get_export(code)
+        if not data_str:
+            await update.message.reply_text("Invalid or expired code.")
+            return
+
+        try:
+            terms = json.loads(data_str)
+            count = 0
+            for src, tgt in terms:
+                if db.add_term(chat_id, src, tgt, lang_pair):
+                    count += 1
+            await update.message.reply_text(
+                f"Successfully imported {count} terms to {l1}-{l2} dictionary."
+            )
+        except Exception as e:
+            logger.error(f"Import error: {e}")
+            await update.message.reply_text("Error importing dictionary data.")
+
     else:
-        await update.message.reply_text("Unknown subcommand. Use add, remove, or list.")
+        await update.message.reply_text(
+            "Unknown subcommand. Use add, remove, list, export, or import."
+        )
+
+
+async def lang_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """
+    Handle language configuration:
+    /lang set <l1> <l2>
+    /lang reset
+    /lang status
+    """
+    if not update.message or not update.effective_chat or not update.message.text:
+        return
+
+    try:
+        args = shlex.split(update.message.text)
+    except ValueError:
+        args = update.message.text.split()
+
+    if len(args) < 2:
+        await update.message.reply_text(
+            "Usage:\n/lang set <lang1> <lang2>\n/lang reset\n/lang status"
+        )
+        return
+
+    subcommand = args[1].lower()
+    chat_id = update.effective_chat.id
+
+    if subcommand == "set":
+        if len(args) < 4:
+            await update.message.reply_text(
+                "Usage: /lang set <primary> <secondary>\nExample: /lang set ru es"
+            )
+            return
+        l1 = args[2].lower()
+        l2 = args[3].lower()
+        if len(l1) != 2 or len(l2) != 2:
+            await update.message.reply_text(
+                "Please use 2-letter language codes (e.g., en, ru, de, es)."
+            )
+            return
+
+        if db.set_languages(chat_id, l1, l2):
+            await update.message.reply_text(f"Languages set: {l1} <-> {l2}")
+        else:
+            await update.message.reply_text("Failed to set languages.")
+
+    elif subcommand == "reset":
+        if db.set_languages(chat_id, "ru", "en"):
+            await update.message.reply_text("Languages reset to: ru <-> en")
+        else:
+            await update.message.reply_text("Failed to reset languages.")
+
+    elif subcommand == "status":
+        l1, l2 = db.get_languages(chat_id)
+        await update.message.reply_text(f"Current languages: {l1} <-> {l2}")
+
+    else:
+        await update.message.reply_text("Unknown subcommand.")
 
 
 async def post_init(application: Application) -> None:
@@ -243,6 +361,7 @@ async def post_init(application: Application) -> None:
         BotCommand("start", "Start bot / Запуск"),
         BotCommand("help", "Help / Справка"),
         BotCommand("dict", "Manage dictionary / Словарь"),
+        BotCommand("lang", "Settings / Языки"),
     ]
     # Set commands for default scope
     await application.bot.set_my_commands(commands)
@@ -281,6 +400,7 @@ def main() -> None:
     application.add_handler(CommandHandler("start", start_command))
     application.add_handler(CommandHandler("help", help_command))
     application.add_handler(CommandHandler("dict", dict_command))
+    application.add_handler(CommandHandler("lang", lang_command))
 
     # on non command i.e message - translate the message on Telegram
     # Filter for text messages that are not commands

@@ -18,76 +18,56 @@ logger = logging.getLogger(__name__)
 class TranslatorService:
     def __init__(self, db: Optional[Database] = None) -> None:
         self.db = db
-        # We initialize translators for specific directions.
-        # Deep Translator uses 'auto' for source detection which is convenient.
-        self._to_en = GoogleTranslator(source="auto", target="en")
-        self._to_ru = GoogleTranslator(source="auto", target="ru")
-
         # Executor for running synchronous translation in async context
         self._executor = ThreadPoolExecutor(max_workers=4)
 
-    def _is_cyrillic(self, text: str) -> bool:
-        """
-        Check if the text contains Cyrillic characters.
-        Used as a simple heuristic to determine if the source is likely Russian.
-        """
-        return bool(re.search(r"[а-яА-ЯёЁ]", text))
-
     def _translate_sync(
-        self, text: str, original_is_cyrillic: Optional[bool] = None
+        self,
+        text: str,
+        primary_lang: str = "ru",
+        secondary_lang: str = "en",
+        original_text: Optional[str] = None,
     ) -> Optional[str]:
         """
-        Synchronous translation logic to be run in an executor.
+        Synchronous translation logic with dynamic language support.
         """
         try:
-            # Use original text detection if provided, otherwise detect on current text
-            is_source_cyrillic = (
-                original_is_cyrillic
-                if original_is_cyrillic is not None
-                else self._is_cyrillic(text)
-            )
+            # Determine direction based on original text (to handle dictionary substitutions)
+            sample_text = original_text if original_text else text
 
-            if is_source_cyrillic:
-                # Source contains Cyrillic -> Translate to English
-                # Note: deep-translator handles 'auto' source well,
-                # but we decide direction based on content presence.
-                translation = cast(str, self._to_en.translate(text))
+            # Strategy:
+            # 1. Try translating sample to Primary.
+            # 2. If it changes, Source is likely Secondary (or Third). Target -> Primary.
+            # 3. If it stays same, Source is likely Primary. Target -> Secondary.
 
-                # If translation is identical to source (e.g. mixed languages), try the other direction
-                # Only perform fallback if we didn't force the direction based on original text
-                should_fallback = (
-                    translation
-                    and translation.lower().strip() == text.lower().strip()
-                    and original_is_cyrillic is None
-                )
+            to_primary = GoogleTranslator(source="auto", target=primary_lang)
+            res_prim = cast(str, to_primary.translate(sample_text))
 
-                if should_fallback:
-                    translation = cast(str, self._to_ru.translate(text))
-                return translation
-            else:
-                # Source does not contain Cyrillic (likely English/Latin) -> Translate to Russian
-                translation = cast(str, self._to_ru.translate(text))
+            is_source_primary = False
+            if res_prim and res_prim.lower().strip() == sample_text.lower().strip():
+                is_source_primary = True
 
-                # If translation is identical to source, try the other direction
-                # Only perform fallback if we didn't force the direction based on original text
-                should_fallback = (
-                    translation
-                    and translation.lower().strip() == text.lower().strip()
-                    and original_is_cyrillic is None
-                )
+            target_lang = secondary_lang if is_source_primary else primary_lang
 
-                if should_fallback:
-                    translation = cast(str, self._to_en.translate(text))
-                return translation
+            # Optimization: If target is Primary and we haven't modified text, return result
+            if target_lang == primary_lang and text == sample_text:
+                return res_prim
+
+            # Translate actual text to determined target
+            translator = GoogleTranslator(source="auto", target=target_lang)
+            return cast(str, translator.translate(text))
+
         except Exception as e:
             logger.error(f"Translation service error: {e}")
             return None
 
-    def _apply_custom_dictionary(self, text: str, chat_id: Optional[int]) -> str:
+    def _apply_custom_dictionary(
+        self, text: str, chat_id: Optional[int], lang_pair: str = "ru-en"
+    ) -> str:
         if not self.db or chat_id is None:
             return text
 
-        terms = self.db.get_terms(chat_id)
+        terms = self.db.get_terms(chat_id, lang_pair)
         if not terms:
             return text
 
@@ -110,27 +90,33 @@ class TranslatorService:
         self, text: str, chat_id: Optional[int] = None
     ) -> Optional[str]:
         """
-        Asynchronously translates text.
-
-        Logic:
-        - If text contains Cyrillic characters -> Translate to English.
-        - Otherwise -> Translate to Russian.
+        Asynchronously translates text using chat-specific language settings.
         """
         if not text or not text.strip():
             return None
 
-        # Detect language on original text to preserve direction even if dictionary replaces everything
-        original_is_cyrillic = self._is_cyrillic(text)
+        # Defaults
+        primary = "ru"
+        secondary = "en"
+
+        if self.db and chat_id:
+            primary, secondary = self.db.get_languages(chat_id)
+
+        # Construct language pair string for dictionary lookup (alphabetical order)
+        langs = sorted([primary, secondary])
+        lang_pair = f"{langs[0]}-{langs[1]}"
 
         # Apply dictionary substitutions before translation
-        text_to_translate = self._apply_custom_dictionary(text, chat_id)
+        text_to_translate = self._apply_custom_dictionary(text, chat_id, lang_pair)
 
         loop = asyncio.get_running_loop()
         return await loop.run_in_executor(
             self._executor,
             self._translate_sync,
             text_to_translate,
-            original_is_cyrillic,
+            primary,
+            secondary,
+            text,  # original_text
         )
 
     def _transcribe_sync(self, file_path: str) -> Optional[str]:
