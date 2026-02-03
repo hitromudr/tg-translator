@@ -8,6 +8,7 @@ from typing import Optional, cast
 
 import speech_recognition as sr  # type: ignore
 from deep_translator import GoogleTranslator  # type: ignore
+from gtts import gTTS  # type: ignore
 from pydub import AudioSegment  # type: ignore
 
 from .db import Database
@@ -165,6 +166,32 @@ class TranslatorService:
             primary,
             secondary,
             text,  # original_text
+        )
+
+    def _generate_audio_sync(self, text: str, lang: str) -> Optional[str]:
+        """
+        Synchronous audio generation using gTTS.
+        """
+        try:
+            # Generate a unique filename
+            filename = f"tmp/tts_{uuid.uuid4()}.mp3"
+            os.makedirs("tmp", exist_ok=True)
+
+            tts = gTTS(text=text, lang=lang)
+            tts.save(filename)
+            return filename
+        except Exception as e:
+            logger.error(f"TTS generation error: {e}")
+            return None
+
+    async def generate_audio(self, text: str, lang: str) -> Optional[str]:
+        """
+        Asynchronously generate audio for the given text.
+        Returns path to the generated MP3 file.
+        """
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(
+            self._executor, self._generate_audio_sync, text, lang
         )
 
     def _transcribe_sync(self, file_path: str) -> Optional[str]:
