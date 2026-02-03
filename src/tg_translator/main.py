@@ -3,6 +3,7 @@ import io
 import json
 import logging
 import os
+import re
 import shlex
 import sys
 
@@ -11,11 +12,14 @@ from telegram import (
     BotCommand,
     BotCommandScopeAllGroupChats,
     BotCommandScopeAllPrivateChats,
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
     Update,
 )
 from telegram.constants import ParseMode
 from telegram.ext import (
     Application,
+    CallbackQueryHandler,
     CommandHandler,
     ContextTypes,
     MessageHandler,
@@ -68,7 +72,14 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         # We reply to the original message with the translation
         safe_translation = html.escape(translation)
         spoiler_text = f'<span class="tg-spoiler">{safe_translation}</span>'
-        await update.message.reply_text(spoiler_text, parse_mode=ParseMode.HTML)
+
+        # TTS Button
+        keyboard = [[InlineKeyboardButton("🔊 Speak", callback_data="speak")]]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+
+        await update.message.reply_text(
+            spoiler_text, parse_mode=ParseMode.HTML, reply_markup=reply_markup
+        )
         logger.info(f"Sent translation: {translation[:50]}...")
     else:
         logger.debug("No translation performed or translation identical to source.")
@@ -115,8 +126,14 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
                     f'<span class="tg-spoiler">{safe_translation}</span>'
                 )
 
+            # TTS Button
+            keyboard = [[InlineKeyboardButton("🔊 Speak", callback_data="speak")]]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+
             await update.message.reply_text(
-                "\n".join(response_parts), parse_mode=ParseMode.HTML
+                "\n".join(response_parts),
+                parse_mode=ParseMode.HTML,
+                reply_markup=reply_markup,
             )
             logger.info("Sent transcription/translation for voice message.")
         else:
@@ -381,6 +398,58 @@ async def lang_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         await update.message.reply_text("Unknown subcommand.")
 
 
+async def tts_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle TTS button click."""
+    query = update.callback_query
+    if not query:
+        return
+
+    await query.answer()
+
+    text = query.message.text
+    if not text:
+        return
+
+    # Clean up text for TTS:
+    # 1. Remove microphone emoji if present (from voice messages)
+    # 2. If multiple lines (voice msg with transcription + translation), take the last one (translation)
+    text = text.replace("🎤", "").strip()
+    if "\n" in text:
+        text = text.split("\n")[-1].strip()
+
+    chat_id = query.message.chat_id
+    l1, l2 = db.get_languages(chat_id)
+
+    # Simple heuristic for language detection to decide which voice to use
+    lang = l2
+    has_cyrillic = bool(re.search(r"[а-яА-ЯёЁ]", text))
+
+    if has_cyrillic:
+        # If any of the configured languages is typically Cyrillic, use it
+        cyrillic_langs = ["ru", "uk", "sr", "be", "bg", "mk", "kk", "ky", "tg"]
+        if l1 in cyrillic_langs:
+            lang = l1
+        elif l2 in cyrillic_langs:
+            lang = l2
+        else:
+            lang = "ru"  # Default fallback
+    else:
+        # Non-cyrillic: favor English if present, otherwise secondary
+        if l1 == "en":
+            lang = "en"
+        elif l2 == "en":
+            lang = "en"
+        # else keep default l2
+
+    try:
+        file_path = await translator_service.generate_audio(text, lang)
+        if file_path:
+            await query.message.reply_voice(voice=open(file_path, "rb"))
+            os.remove(file_path)
+    except Exception as e:
+        logger.error(f"TTS error: {e}")
+
+
 async def post_init(application: Application) -> None:
     """Set up the bot's commands."""
     commands = [
@@ -427,6 +496,8 @@ def main() -> None:
     application.add_handler(CommandHandler("help", help_command))
     application.add_handler(CommandHandler("dict", dict_command))
     application.add_handler(CommandHandler("lang", lang_command))
+
+    application.add_handler(CallbackQueryHandler(tts_callback))
 
     # on non command i.e message - translate the message on Telegram
     # Filter for text messages that are not commands
