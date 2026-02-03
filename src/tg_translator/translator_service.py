@@ -21,6 +21,19 @@ class TranslatorService:
         # Executor for running synchronous translation in async context
         self._executor = ThreadPoolExecutor(max_workers=4)
 
+    def get_supported_languages(self) -> dict[str, str]:
+        """Return a dictionary of supported languages (name -> code)."""
+        return cast(
+            dict[str, str], GoogleTranslator().get_supported_languages(as_dict=True)
+        )
+
+    def is_language_supported(self, lang_code: str) -> bool:
+        """Check if a language code is supported."""
+        if not lang_code:
+            return False
+        supported = self.get_supported_languages()
+        return lang_code.lower() in supported.values()
+
     def _translate_sync(
         self,
         text: str,

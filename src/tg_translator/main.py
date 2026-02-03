@@ -1,4 +1,5 @@
 import html
+import io
 import json
 import logging
 import os
@@ -315,7 +316,7 @@ async def lang_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 
     if len(args) < 2:
         await update.message.reply_text(
-            "Usage:\n/lang set <lang1> <lang2>\n/lang reset\n/lang status"
+            "Usage:\n/lang set <lang1> <lang2>\n/lang reset\n/lang status\n/lang list"
         )
         return
 
@@ -330,9 +331,16 @@ async def lang_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
             return
         l1 = args[2].lower()
         l2 = args[3].lower()
-        if len(l1) != 2 or len(l2) != 2:
+
+        if not translator_service.is_language_supported(l1):
             await update.message.reply_text(
-                "Please use 2-letter language codes (e.g., en, ru, de, es)."
+                f"Error: Language code '{l1}' is not supported.\nUse /lang list to see available codes."
+            )
+            return
+
+        if not translator_service.is_language_supported(l2):
+            await update.message.reply_text(
+                f"Error: Language code '{l2}' is not supported.\nUse /lang list to see available codes."
             )
             return
 
@@ -350,6 +358,19 @@ async def lang_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     elif subcommand == "status":
         l1, l2 = db.get_languages(chat_id)
         await update.message.reply_text(f"Current languages: {l1} <-> {l2}")
+
+    elif subcommand == "list":
+        supported = translator_service.get_supported_languages()
+        # Format: Name: code
+        lines = [f"{name.title()}: {code}" for name, code in supported.items()]
+        text = "Supported Languages:\n\n" + "\n".join(sorted(lines))
+
+        file = io.BytesIO(text.encode("utf-8"))
+        file.name = "languages.txt"
+
+        await update.message.reply_document(
+            document=file, caption="List of supported languages and their codes."
+        )
 
     else:
         await update.message.reply_text("Unknown subcommand.")
