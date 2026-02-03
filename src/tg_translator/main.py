@@ -468,8 +468,9 @@ async def clean_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     # Delete the command message itself first
     try:
         await update.message.delete()
-    except Exception:
-        pass
+        logger.info(f"Deleted command message {update.message.message_id}")
+    except Exception as e:
+        logger.warning(f"Failed to delete command message: {e}")
 
     try:
         count = int(context.args[0]) if context.args else 10
@@ -478,19 +479,33 @@ async def clean_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     except (ValueError, IndexError):
         count = 10
 
+    logger.info(
+        f"Starting cleanup of {count} messages in chat {update.effective_chat.id}"
+    )
+
     message_id = update.message.message_id
     chat_id = update.effective_chat.id
 
     # Try to delete previous messages blindly
+    deleted_count = 0
+    failed_count = 0
     for i in range(1, count + 1):
         target_id = message_id - i
         if target_id < 1:
             break
         try:
             await context.bot.delete_message(chat_id=chat_id, message_id=target_id)
-        except Exception:
-            # Ignore errors (e.g. message not found, can't delete other's messages)
+            deleted_count += 1
+            logger.info(f"Deleted message {target_id}")
+        except Exception as e:
+            failed_count += 1
+            # Log reason why deletion failed (e.g. "Message can't be deleted")
+            logger.info(f"Failed to delete message {target_id}: {e}")
             continue
+
+    logger.info(
+        f"Cleanup finished. Deleted {deleted_count}, Failed {failed_count} messages."
+    )
 
 
 async def post_init(application: Application) -> None:
