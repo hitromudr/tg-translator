@@ -56,6 +56,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         return
 
     original_text = update.message.text
+
+    # Ignore messages without text content (emojis-only, punctuation-only)
+    if not re.search(r"\w", original_text):
+        return
+
     user = update.message.from_user
     if user:
         username = user.username or user.first_name
@@ -450,6 +455,44 @@ async def tts_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         logger.error(f"TTS error: {e}")
 
 
+async def clean_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """
+    Clean up bot messages.
+    Usage: /clean [count] (default 10)
+    Tries to delete previous N messages.
+    If bot is not admin, it only deletes its own messages.
+    """
+    if not update.message or not update.effective_chat:
+        return
+
+    # Delete the command message itself first
+    try:
+        await update.message.delete()
+    except Exception:
+        pass
+
+    try:
+        count = int(context.args[0]) if context.args else 10
+        if count > 50:
+            count = 50
+    except (ValueError, IndexError):
+        count = 10
+
+    message_id = update.message.message_id
+    chat_id = update.effective_chat.id
+
+    # Try to delete previous messages blindly
+    for i in range(1, count + 1):
+        target_id = message_id - i
+        if target_id < 1:
+            break
+        try:
+            await context.bot.delete_message(chat_id=chat_id, message_id=target_id)
+        except Exception:
+            # Ignore errors (e.g. message not found, can't delete other's messages)
+            continue
+
+
 async def post_init(application: Application) -> None:
     """Set up the bot's commands."""
     commands = [
@@ -457,6 +500,7 @@ async def post_init(application: Application) -> None:
         BotCommand("help", "Help / Справка"),
         BotCommand("dict", "Manage dictionary / Словарь"),
         BotCommand("lang", "Settings / Языки"),
+        BotCommand("clean", "Cleanup / Уборка"),
     ]
     # Set commands for default scope
     await application.bot.set_my_commands(commands)
@@ -496,6 +540,7 @@ def main() -> None:
     application.add_handler(CommandHandler("help", help_command))
     application.add_handler(CommandHandler("dict", dict_command))
     application.add_handler(CommandHandler("lang", lang_command))
+    application.add_handler(CommandHandler("clean", clean_command))
 
     application.add_handler(CallbackQueryHandler(tts_callback))
 
