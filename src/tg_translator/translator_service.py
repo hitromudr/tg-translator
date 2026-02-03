@@ -37,6 +37,20 @@ class TranslatorService:
             return None
 
         lang_input = lang_input.strip().lower()
+
+        # Common aliases for user convenience
+        aliases = {
+            "cn": "zh-CN",
+            "ua": "uk",
+            "cz": "cs",
+            "jp": "ja",
+            "kr": "ko",
+            "rs": "sr",
+            "by": "be",
+        }
+        if lang_input in aliases:
+            lang_input = aliases[lang_input].lower()
+
         supported = self.get_supported_languages()
 
         # 1. Check against codes (values) case-insensitively
