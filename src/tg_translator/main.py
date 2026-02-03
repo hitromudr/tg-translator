@@ -335,18 +335,17 @@ async def lang_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
                 "Usage: /lang set <primary> <secondary>\nExample: /lang set ru es"
             )
             return
-        l1 = args[2].lower()
-        l2 = args[3].lower()
-
-        if not translator_service.is_language_supported(l1):
+        l1 = translator_service.normalize_language_code(args[2])
+        if not l1:
             await update.message.reply_text(
-                f"Error: Language code '{l1}' is not supported.\nUse /lang list to see available codes."
+                f"Error: Language '{args[2]}' is not supported.\nUse /lang list to see available codes."
             )
             return
 
-        if not translator_service.is_language_supported(l2):
+        l2 = translator_service.normalize_language_code(args[3])
+        if not l2:
             await update.message.reply_text(
-                f"Error: Language code '{l2}' is not supported.\nUse /lang list to see available codes."
+                f"Error: Language '{args[3]}' is not supported.\nUse /lang list to see available codes."
             )
             return
 

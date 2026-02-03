@@ -27,12 +27,33 @@ class TranslatorService:
             dict[str, str], GoogleTranslator().get_supported_languages(as_dict=True)
         )
 
-    def is_language_supported(self, lang_code: str) -> bool:
-        """Check if a language code is supported."""
-        if not lang_code:
-            return False
+    def normalize_language_code(self, lang_input: str) -> Optional[str]:
+        """
+        Try to find a valid language code from input (code or name).
+        Case-insensitive.
+        Returns the canonical code (e.g. 'zh-CN') or None.
+        """
+        if not lang_input:
+            return None
+
+        lang_input = lang_input.strip().lower()
         supported = self.get_supported_languages()
-        return lang_code.lower() in supported.values()
+
+        # 1. Check against codes (values) case-insensitively
+        for code in supported.values():
+            if code.lower() == lang_input:
+                return code
+
+        # 2. Check against names (keys) case-insensitively
+        # deep_translator keys are typically lowercase
+        if lang_input in supported:
+            return supported[lang_input]
+
+        return None
+
+    def is_language_supported(self, lang_code: str) -> bool:
+        """Check if a language code (or name) is supported."""
+        return self.normalize_language_code(lang_code) is not None
 
     def _translate_sync(
         self,
