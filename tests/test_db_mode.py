@@ -83,6 +83,35 @@ class TestDatabaseMode(unittest.TestCase):
         self.assertFalse(success)
         self.assertEqual(self.db.get_voice_gender(chat_id), "male")
 
+    def test_voice_presets(self):
+        """Test setting, retrieving, and clearing voice presets."""
+        chat_id = 777
+
+        # Set preset for EN Male
+        success = self.db.set_voice_preset(chat_id, "en", "male", "en_99")
+        self.assertTrue(success)
+
+        # Retrieve it
+        preset = self.db.get_voice_preset(chat_id, "en", "male")
+        self.assertEqual(preset, "en_99")
+
+        # Check unknown preset (should return None)
+        preset = self.db.get_voice_preset(chat_id, "ru", "male")
+        self.assertIsNone(preset)
+
+        # Check case insensitivity
+        self.db.set_voice_preset(chat_id, "UA", "FeMaLe", "mykyta")
+        preset = self.db.get_voice_preset(chat_id, "ua", "female")
+        self.assertEqual(preset, "mykyta")
+
+        # Clear presets
+        success = self.db.delete_voice_presets(chat_id)
+        self.assertTrue(success)
+
+        # Verify cleared
+        preset = self.db.get_voice_preset(chat_id, "en", "male")
+        self.assertIsNone(preset)
+
 
 if __name__ == "__main__":
     unittest.main()

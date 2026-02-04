@@ -1,4 +1,5 @@
 import logging
+import os
 
 from telegram import BotCommandScopeChat, Update
 from telegram.constants import ParseMode
@@ -86,30 +87,111 @@ async def mute_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 
 
 async def voice_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Set voice gender: /voice male or /voice female."""
+    """
+    Manage voice settings.
+    Usage:
+    /voice [male|female] - Quick toggle
+    /voice test <lang> <speaker> - Preview
+    /voice set <lang> <gender> <speaker> - Set preset
+    /voice reset - Clear presets
+    """
     if not update.message or not update.effective_chat:
         return
 
     args = context.args
     db = context.bot_data["db"]
+    service = context.bot_data["translator_service"]
+    chat_id = update.effective_chat.id
 
     if not args:
-        # Show status
-        current = db.get_voice_gender(update.effective_chat.id)
-        await update.message.reply_text(
-            f"Current voice: {current}\nUsage: /voice male | female"
+        current_gender = db.get_voice_gender(chat_id)
+        msg = f"Current global gender: <b>{current_gender}</b>\n\n"
+        msg += (
+            "<b>Usage:</b>\n"
+            "• <code>/voice male</code> or <code>female</code> - Switch global preference.\n"
+            "• <code>/voice test en en_45</code> - Test a speaker.\n"
+            "• <code>/voice set en male en_45</code> - Assign speaker to lang/gender.\n"
+            "• <code>/voice reset</code> - Clear all custom presets."
         )
+        await update.message.reply_text(msg, parse_mode=ParseMode.HTML)
         return
 
-    gender = args[0].lower()
-    if gender not in ["male", "female"]:
-        await update.message.reply_text("Invalid gender. Use: male or female")
+    subcommand = args[0].lower()
+
+    # Legacy: /voice male | female
+    if subcommand in ["male", "female"]:
+        if db.set_voice_gender(chat_id, subcommand):
+            await update.message.reply_text(f"Global voice gender set to: {subcommand}")
+        else:
+            await update.message.reply_text("Failed to set voice gender.")
         return
 
-    if db.set_voice_gender(update.effective_chat.id, gender):
-        await update.message.reply_text(f"Voice set to: {gender}")
+    if subcommand == "test":
+        if len(args) < 3:
+            await update.message.reply_text(
+                "Usage: /voice test <lang> <speaker>\nExample: /voice test en en_45"
+            )
+            return
+
+        lang = args[1].lower()
+        speaker = args[2]
+
+        text_map = {
+            "ru": "Это тест выбранного голоса.",
+            "en": "This is a test of the selected voice.",
+            "uk": "Це тест вибраного голосу.",
+            "ua": "Це тест вибраного голосу.",
+        }
+        test_text = text_map.get(lang, "This is a test of the selected voice.")
+
+        try:
+            path = await service.generate_audio(
+                test_text, lang, speaker_override=speaker
+            )
+            if path:
+                await update.message.reply_voice(open(path, "rb"))
+                os.remove(path)
+            else:
+                await update.message.reply_text(
+                    f"Failed to generate audio for {lang}/{speaker}."
+                )
+        except Exception as e:
+            logger.error(f"Voice test error: {e}")
+            await update.message.reply_text("Error generating audio.")
+
+    elif subcommand == "set":
+        # /voice set en male en_45
+        if len(args) < 4:
+            await update.message.reply_text(
+                "Usage: /voice set <lang> <gender> <speaker>\nExample: /voice set en male en_92"
+            )
+            return
+
+        lang = args[1].lower()
+        gender = args[2].lower()
+        speaker = args[3]
+
+        if gender not in ["male", "female"]:
+            await update.message.reply_text("Gender must be 'male' or 'female'.")
+            return
+
+        if db.set_voice_preset(chat_id, lang, gender, speaker):
+            await update.message.reply_text(
+                f"Saved preset: {lang.upper()} ({gender}) -> {speaker}"
+            )
+        else:
+            await update.message.reply_text("Failed to save preset.")
+
+    elif subcommand == "reset":
+        if db.delete_voice_presets(chat_id):
+            await update.message.reply_text("All custom voice presets cleared.")
+        else:
+            await update.message.reply_text("Failed to clear presets.")
+
     else:
-        await update.message.reply_text("Failed to set voice.")
+        await update.message.reply_text(
+            "Unknown command. Use: male, female, test, set, reset."
+        )
 
 
 async def clean_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:

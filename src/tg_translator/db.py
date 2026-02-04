@@ -67,7 +67,18 @@ class Database:
                     )
                     """)
 
-                # 4. Manage dictionary table (Migration logic)
+                # 4. Create voice_presets table (Advanced Voice Control)
+                cursor.execute("""
+                    CREATE TABLE IF NOT EXISTS voice_presets (
+                        chat_id INTEGER NOT NULL,
+                        lang_code TEXT NOT NULL,
+                        gender TEXT NOT NULL,
+                        speaker TEXT NOT NULL,
+                        PRIMARY KEY (chat_id, lang_code, gender)
+                    )
+                    """)
+
+                # 5. Manage dictionary table (Migration logic)
                 # Check if dictionary table exists
                 cursor.execute(
                     "SELECT name FROM sqlite_master WHERE type='table' AND name='dictionary'"
@@ -304,6 +315,62 @@ class Database:
         except Exception as e:
             logger.error(f"Error getting voice gender: {e}")
             return "male"
+
+    def set_voice_preset(
+        self, chat_id: int, lang_code: str, gender: str, speaker: str
+    ) -> bool:
+        """Set a specific speaker for a lang+gender combination in a chat."""
+        try:
+            with self._get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    """
+                    INSERT OR REPLACE INTO voice_presets (chat_id, lang_code, gender, speaker)
+                    VALUES (?, ?, ?, ?)
+                    """,
+                    (chat_id, lang_code.lower(), gender.lower(), speaker),
+                )
+                conn.commit()
+            return True
+        except Exception as e:
+            logger.error(f"Error setting voice preset: {e}")
+            return False
+
+    def get_voice_preset(
+        self, chat_id: int, lang_code: str, gender: str
+    ) -> Optional[str]:
+        """Get the preferred speaker if set."""
+        try:
+            with self._get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    """
+                    SELECT speaker FROM voice_presets
+                    WHERE chat_id = ? AND lang_code = ? AND gender = ?
+                    """,
+                    (chat_id, lang_code.lower(), gender.lower()),
+                )
+                row = cursor.fetchone()
+                if row:
+                    return cast(str, row[0])
+                return None
+        except Exception as e:
+            logger.error(f"Error getting voice preset: {e}")
+            return None
+
+    def delete_voice_presets(self, chat_id: int) -> bool:
+        """Clear all presets for a chat."""
+        try:
+            with self._get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    "DELETE FROM voice_presets WHERE chat_id = ?", (chat_id,)
+                )
+                conn.commit()
+            return True
+        except Exception as e:
+            logger.error(f"Error clearing voice presets: {e}")
+            return False
 
     # --- Import/Export Methods ---
 

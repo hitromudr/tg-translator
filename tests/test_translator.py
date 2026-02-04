@@ -193,18 +193,15 @@ class TestTranslatorService(unittest.TestCase):
         mock_model.transcribe.assert_called_with("dummy.ogg", beam_size=5)
 
     @patch("tg_translator.translator_service.torch")
-    @patch("tg_translator.translator_service.torchaudio")
+    @patch("tg_translator.translator_service.sf")
     @patch("tg_translator.translator_service.AudioSegment")
-    def test_generate_audio_silero_ru(
-        self, MockAudioSegment, MockTorchaudio, MockTorch
-    ):
+    def test_generate_audio_silero_ru(self, MockAudioSegment, MockSF, MockTorch):
         """Test Silero TTS generation for supported language (ru)."""
         # Mock hub load returning (model, example_text)
         mock_model = MagicMock()
         mock_model.apply_tts.return_value = MagicMock()  # Tensor
-        # apply_tts returns a tensor, torchaudio.save expects a tensor.
-        # We also need to ensure unsqueeze works on the result if called.
-        mock_model.apply_tts.return_value.unsqueeze.return_value = MagicMock()
+        # apply_tts returns a tensor. sf.write expects numpy array.
+        mock_model.apply_tts.return_value.numpy.return_value = MagicMock()
 
         MockTorch.hub.load.return_value = (mock_model, "example")
         MockTorch.device.return_value = "cpu"
@@ -229,7 +226,7 @@ class TestTranslatorService(unittest.TestCase):
         self.assertEqual(kwargs["speaker"], "kseniya")
 
         # Should verify saving
-        MockTorchaudio.save.assert_called()
+        MockSF.write.assert_called()
         self.assertIn("tmp/tts_silero_", path)
         self.assertTrue(path.endswith(".mp3"))
 

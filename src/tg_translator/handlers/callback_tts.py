@@ -63,7 +63,7 @@ async def tts_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         # else keep default l2
 
     try:
-        file_path = await translator_service.generate_audio(text, lang, gender)
+        file_path = await translator_service.generate_audio(text, lang, gender, chat_id)
         if file_path:
             await message.reply_voice(voice=open(file_path, "rb"))
             os.remove(file_path)

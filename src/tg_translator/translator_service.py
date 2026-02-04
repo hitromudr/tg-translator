@@ -186,7 +186,12 @@ class TranslatorService:
         )
 
     def _generate_audio_silero_sync(
-        self, text: str, lang: str, gender: str = "male"
+        self,
+        text: str,
+        lang: str,
+        gender: str = "male",
+        chat_id: Optional[int] = None,
+        speaker_override: Optional[str] = None,
     ) -> Optional[str]:
         """
         Generate audio using Silero TTS (high quality).
@@ -199,26 +204,44 @@ class TranslatorService:
             speaker = None
             model_id = None
 
+            if speaker_override:
+                speaker = speaker_override
+            else:
+                # Check for custom preset first
+                if self.db and chat_id:
+                    preset_speaker = self.db.get_voice_preset(
+                        chat_id, lang_code, gender
+                    )
+                    if preset_speaker:
+                        speaker = preset_speaker
+
+            # Default logic if no preset found
+            if not speaker:
+                if lang_code == "ru":
+                    # v4_ru supports: aidar (male), kseniya (female), eugene (male), baya (female)
+                    if gender == "female":
+                        speaker = "kseniya"
+                    else:
+                        speaker = "aidar"
+                elif lang_code in ["uk", "ua"]:
+                    # v4_ua supports: mykyta (male).
+                    # Fallback to male if female not available in standard package
+                    speaker = "mykyta"
+                elif lang_code == "en":
+                    # v3_en supports: en_0 .. en_117
+                    if gender == "female":
+                        speaker = "en_5"  # Better female voice
+                    else:
+                        speaker = "en_2"  # Distinct male voice
+
+            # Determine model_id based on lang_code (presets only store speaker name)
             if lang_code == "ru":
-                # v4_ru supports: aidar (male), kseniya (female), eugene (male), baya (female)
                 model_id = "v4_ru"
-                if gender == "female":
-                    speaker = "kseniya"
-                else:
-                    speaker = "aidar"
             elif lang_code in ["uk", "ua"]:
-                # v4_ua supports: mykyta (male).
-                lang_code = "ua"  # Silero uses 'ua' code
+                lang_code = "ua"
                 model_id = "v4_ua"
-                # Fallback to male if female not available in standard package
-                speaker = "mykyta"
             elif lang_code == "en":
-                # v3_en supports: en_0 .. en_117
                 model_id = "v3_en"
-                if gender == "female":
-                    speaker = "en_1"  # Example female voice
-                else:
-                    speaker = "en_2"  # Distinct male voice
             else:
                 # Language not supported by our Silero config, fallback to gTTS
                 return None
@@ -272,14 +295,21 @@ class TranslatorService:
             return None
 
     def _generate_audio_sync(
-        self, text: str, lang: str, gender: str = "male"
+        self,
+        text: str,
+        lang: str,
+        gender: str = "male",
+        chat_id: Optional[int] = None,
+        speaker_override: Optional[str] = None,
     ) -> Optional[str]:
         """
         Synchronous audio generation.
         Tries Silero TTS first, falls back to gTTS.
         """
         # Try Silero first
-        silero_path = self._generate_audio_silero_sync(text, lang, gender)
+        silero_path = self._generate_audio_silero_sync(
+            text, lang, gender, chat_id, speaker_override
+        )
         if silero_path:
             return silero_path
 
@@ -296,7 +326,12 @@ class TranslatorService:
             return None
 
     async def generate_audio(
-        self, text: str, lang: str, gender: str = "male"
+        self,
+        text: str,
+        lang: str,
+        gender: str = "male",
+        chat_id: Optional[int] = None,
+        speaker_override: Optional[str] = None,
     ) -> Optional[str]:
         """
         Asynchronously generate audio for the given text.
@@ -304,7 +339,13 @@ class TranslatorService:
         """
         loop = asyncio.get_running_loop()
         return await loop.run_in_executor(
-            self._executor, self._generate_audio_sync, text, lang, gender
+            self._executor,
+            self._generate_audio_sync,
+            text,
+            lang,
+            gender,
+            chat_id,
+            speaker_override,
         )
 
     def _get_whisper_model(self) -> WhisperModel:
