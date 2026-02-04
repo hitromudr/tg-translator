@@ -103,7 +103,9 @@ def main() -> None:
     application.add_handler(CommandHandler("clean", clean_command))
 
     application.add_handler(
-        CallbackQueryHandler(translate_callback, pattern="^translate_this$")
+        CallbackQueryHandler(
+            translate_callback, pattern="^(transcribe|translate)_this$"
+        )
     )
     application.add_handler(CallbackQueryHandler(tts_callback))
 

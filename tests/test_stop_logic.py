@@ -88,7 +88,8 @@ async def test_interactive_mode_sends_button():
 
     # Should reply with a button
     update.message.reply_text.assert_called_once()
-    kwargs = update.message.reply_text.call_args[1]
+    args, kwargs = update.message.reply_text.call_args
+    assert args[0] == "..."
     assert "reply_markup" in kwargs
 
     # Verify the button callback data
