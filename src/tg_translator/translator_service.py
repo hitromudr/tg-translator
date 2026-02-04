@@ -131,6 +131,39 @@ class TranslatorService:
             logger.error(f"Groq translation error: {e}")
             return None
 
+    def _transcribe_groq_sync(self, file_path: str) -> Optional[str]:
+        """Transcribe audio using Groq Whisper Large V3."""
+        if not self.groq_client:
+            return None
+
+        temp_mp3 = None
+        try:
+            # Convert OGG (Telegram) to MP3 for better API compatibility
+            # Telegram uses OGG Opus, which some APIs reject.
+            # Conversion is fast and safe.
+            temp_mp3 = file_path + ".mp3"
+            AudioSegment.from_ogg(file_path).export(temp_mp3, format="mp3")
+
+            with open(temp_mp3, "rb") as file:
+                # Groq Whisper API (OpenAI compatible)
+                transcription = self.groq_client.audio.transcriptions.create(
+                    file=(os.path.basename(temp_mp3), file.read()),
+                    model="whisper-large-v3",
+                    # prompt="Optional prompt to guide style"
+                )
+                return transcription.text.strip()  # type: ignore
+
+        except Exception as e:
+            logger.error(f"Groq Whisper transcription error: {e}")
+            return None
+        finally:
+            # Cleanup temp MP3
+            if temp_mp3 and os.path.exists(temp_mp3):
+                try:
+                    os.remove(temp_mp3)
+                except Exception:
+                    pass
+
     def _translate_sync(
         self,
         text: str,
@@ -487,8 +520,20 @@ class TranslatorService:
     async def transcribe_audio(self, file_path: str) -> Optional[str]:
         """
         Asynchronously transcribe audio file.
+        Tries Groq (Whisper Large V3) first, falls back to local Whisper (Small).
         """
         loop = asyncio.get_running_loop()
+
+        # 1. Try Groq (Cloud / High Quality / Zero RAM)
+        if self.groq_client:
+            groq_result = await loop.run_in_executor(
+                self._executor, self._transcribe_groq_sync, file_path
+            )
+            if groq_result:
+                return groq_result
+            # If Groq fails, fall through to local
+
+        # 2. Fallback to Local Whisper (RAM heavy)
         return await loop.run_in_executor(
             self._executor, self._transcribe_sync, file_path
         )
