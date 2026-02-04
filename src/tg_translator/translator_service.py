@@ -11,6 +11,7 @@ import torch  # type: ignore
 import torchaudio  # type: ignore
 from deep_translator import GoogleTranslator  # type: ignore
 from faster_whisper import WhisperModel  # type: ignore
+from groq import Groq  # type: ignore
 from gtts import gTTS  # type: ignore
 from pydub import AudioSegment  # type: ignore
 
@@ -27,6 +28,16 @@ class TranslatorService:
         self.whisper_model: Optional[WhisperModel] = None
         # Cache for Silero TTS models: {model_id: model_object}
         self.silero_models: Dict[str, Any] = {}
+
+        # Initialize Groq client if key is present (supports standard or user-defined env var)
+        groq_key = os.getenv("GROQ_API_KEY") or os.getenv("GROK_API_KEY")
+        self.groq_client: Optional[Groq] = None
+        if groq_key:
+            try:
+                self.groq_client = Groq(api_key=groq_key)
+                logger.info("Groq LLM client initialized for Smart Translation.")
+            except Exception as e:
+                logger.error(f"Failed to initialize Groq client: {e}")
 
     def get_supported_languages(self) -> dict[str, str]:
         """Return a dictionary of supported languages (name -> code)."""
@@ -76,6 +87,50 @@ class TranslatorService:
         """Check if a language code (or name) is supported."""
         return self.normalize_language_code(lang_code) is not None
 
+    def _get_language_name(self, code: str) -> str:
+        """Convert code (ru) to name (russian) for LLM prompts."""
+        supported = self.get_supported_languages()
+        # supported is {name: code}
+        for name, c in supported.items():
+            if c.lower() == code.lower():
+                return name
+        return code
+
+    def _translate_groq_sync(
+        self, text: str, source_lang: str, target_lang: str
+    ) -> Optional[str]:
+        """Translate using Groq LLM (Llama 3)."""
+        if not self.groq_client:
+            return None
+
+        try:
+            source_name = self._get_language_name(source_lang)
+            target_name = self._get_language_name(target_lang)
+
+            # Using Llama 3.3 70B Versatile as recommended for speed/quality balance
+            model = "llama-3.3-70b-versatile"
+
+            completion = self.groq_client.chat.completions.create(
+                model=model,
+                messages=[
+                    {
+                        "role": "system",
+                        "content": (
+                            f"You are a professional translator. Translate the following text from {source_name} to {target_name}. "
+                            "Maintain the tone, style, and slang if present. "
+                            "Do not add explanations or quotes. Output ONLY the translation."
+                        ),
+                    },
+                    {"role": "user", "content": text},
+                ],
+                temperature=0.3,
+                max_tokens=2048,
+            )
+            return completion.choices[0].message.content.strip()  # type: ignore
+        except Exception as e:
+            logger.error(f"Groq translation error: {e}")
+            return None
+
     def _translate_sync(
         self,
         text: str,
@@ -115,11 +170,22 @@ class TranslatorService:
 
             target_lang = secondary_lang if is_source_primary else primary_lang
 
+            # 4. Try Groq (Smart Translation) first
+            if self.groq_client:
+                # Infer source language for prompt
+                inferred_source = primary_lang if is_source_primary else secondary_lang
+                llm_result = self._translate_groq_sync(
+                    text, inferred_source, target_lang
+                )
+                if llm_result:
+                    return llm_result
+                # If Groq fails (returns None), fall through to Google Translate
+
             # Optimization: If target is Primary and we haven't modified text, return result
             if target_lang == primary_lang and text == sample_text:
                 return res_prim
 
-            # Translate actual text to determined target
+            # 5. Fallback: Translate actual text to determined target using Google
             translator = GoogleTranslator(source="auto", target=target_lang)
             return cast(str, translator.translate(text))
 
