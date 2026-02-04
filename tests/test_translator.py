@@ -173,6 +173,25 @@ class TestTranslatorService(unittest.TestCase):
         result = self.service._translate_sync("Hello")
         self.assertIsNone(result)
 
+    @patch("tg_translator.translator_service.WhisperModel")
+    def test_transcribe_sync_whisper(self, MockWhisperModel):
+        """Test Whisper transcription logic and resource config."""
+        mock_model = MockWhisperModel.return_value
+        mock_seg = MagicMock()
+        mock_seg.text = "Test Transcription"
+        # transcribe returns (segments_generator, info)
+        mock_model.transcribe.return_value = ([mock_seg], "info")
+
+        res = self.service._transcribe_sync("dummy.ogg")
+
+        self.assertEqual(res, "Test Transcription")
+        # Verify initialization params (CPU limits for SAX compatibility)
+        MockWhisperModel.assert_called_with(
+            "base", device="cpu", compute_type="int8", cpu_threads=2
+        )
+        # Verify transcription call
+        mock_model.transcribe.assert_called_with("dummy.ogg", beam_size=5)
+
 
 class TestTranslatorServiceAsync(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):

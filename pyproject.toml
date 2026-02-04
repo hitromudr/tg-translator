@@ -12,6 +12,7 @@ dependencies = [
     "SpeechRecognition>=3.10.0",
     "pydub>=0.25.1",
     "gTTS>=2.4.0",
+    "faster-whisper>=1.0.0",
 ]
 requires-python = ">=3.10"
 readme = "README.md"

@@ -6,10 +6,9 @@ import uuid
 from concurrent.futures import ThreadPoolExecutor
 from typing import Optional, cast
 
-import speech_recognition as sr  # type: ignore
 from deep_translator import GoogleTranslator  # type: ignore
+from faster_whisper import WhisperModel  # type: ignore
 from gtts import gTTS  # type: ignore
-from pydub import AudioSegment  # type: ignore
 
 from .db import Database
 
@@ -21,6 +20,7 @@ class TranslatorService:
         self.db = db
         # Executor for running synchronous translation in async context
         self._executor = ThreadPoolExecutor(max_workers=4)
+        self.whisper_model: Optional[WhisperModel] = None
 
     def get_supported_languages(self) -> dict[str, str]:
         """Return a dictionary of supported languages (name -> code)."""
@@ -205,47 +205,37 @@ class TranslatorService:
             self._executor, self._generate_audio_sync, text, lang
         )
 
+    def _get_whisper_model(self) -> WhisperModel:
+        """
+        Lazy load the Whisper model on first use.
+        Configured for 4-core server hosting LiveKit alongside.
+        cpu_threads=2 ensures we don't starve other processes.
+        """
+        if self.whisper_model is None:
+            logger.info("Loading Whisper model (base, int8)...")
+            self.whisper_model = WhisperModel(
+                "base", device="cpu", compute_type="int8", cpu_threads=2
+            )
+        return self.whisper_model
+
     def _transcribe_sync(self, file_path: str) -> Optional[str]:
         """
-        Synchronous transcription logic.
+        Synchronous transcription logic using Faster-Whisper.
+        Directly accepts OGG (Telegram voice) via ffmpeg backend.
         """
-        wav_path = f"{file_path}_{uuid.uuid4()}.wav"
         try:
-            # Convert audio (likely OGG) to WAV for SpeechRecognition
-            sound = AudioSegment.from_file(file_path)
+            model = self._get_whisper_model()
+            # beam_size=5 provides better accuracy than greedy search
+            segments, info = model.transcribe(file_path, beam_size=5)
 
-            # Add 500ms silence to prevent cut-offs at the end
-            sound += AudioSegment.silent(duration=500)
-
-            sound.export(wav_path, format="wav")
-
-            recognizer = sr.Recognizer()
-            with sr.AudioFile(wav_path) as source:
-                audio_data = recognizer.record(source)
-                # Try recognizing as Russian first
-                try:
-                    text = recognizer.recognize_google(audio_data, language="ru-RU")
-                    return cast(str, text)
-                except sr.UnknownValueError:
-                    # If failed, try English
-                    try:
-                        text = recognizer.recognize_google(audio_data, language="en-US")
-                        return cast(str, text)
-                    except sr.UnknownValueError:
-                        logger.debug("Speech recognition could not understand audio")
-                        return None
-                except sr.RequestError as e:
-                    logger.error(f"Google Speech Recognition service error: {e}")
-                    return None
+            # Segments is a generator, iteration triggers processing
+            text = " ".join([segment.text for segment in segments]).strip()
+            if not text:
+                return None
+            return text
         except Exception as e:
-            logger.error(f"Transcription error: {e}")
+            logger.error(f"Whisper transcription error: {e}")
             return None
-        finally:
-            if os.path.exists(wav_path):
-                try:
-                    os.remove(wav_path)
-                except OSError:
-                    pass
 
     async def transcribe_audio(self, file_path: str) -> Optional[str]:
         """
