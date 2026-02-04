@@ -1,8 +1,10 @@
 import logging
 
-from telegram import Update
+from telegram import BotCommandScopeChat, Update
 from telegram.constants import ParseMode
 from telegram.ext import ContextTypes
+
+from tg_translator.commands import BOT_COMMANDS
 
 logger = logging.getLogger(__name__)
 
@@ -15,6 +17,16 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     # Ensure mode is auto (active)
     db = context.bot_data["db"]
     db.set_mode(update.effective_chat.id, "auto")
+
+    # Force update commands for this specific chat
+    try:
+        await context.bot.set_my_commands(
+            BOT_COMMANDS, scope=BotCommandScopeChat(update.effective_chat.id)
+        )
+    except Exception as e:
+        logger.error(
+            f"Failed to refresh commands for chat {update.effective_chat.id}: {e}"
+        )
 
     await update.message.reply_text(
         "Привет! Я бот-переводчик. Я автоматически перевожу сообщения в этом чате.\n"

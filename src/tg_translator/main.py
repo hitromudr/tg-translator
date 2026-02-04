@@ -19,6 +19,7 @@ from telegram.ext import (
 )
 from telegram.request import HTTPXRequest
 
+from tg_translator.commands import BOT_COMMANDS
 from tg_translator.db import Database
 from tg_translator.handlers.admin import (
     clean_command,
@@ -46,31 +47,22 @@ logger = logging.getLogger(__name__)
 
 async def post_init(application: Application) -> None:
     """Set up the bot's commands."""
-    commands = [
-        BotCommand("start", "Start bot / Запуск"),
-        BotCommand("stop", "Stop bot / Стоп"),
-        BotCommand("mute", "Interactive / Интерактив"),
-        BotCommand("help", "Help / Справка"),
-        BotCommand("dict", "Manage dictionary / Словарь"),
-        BotCommand("lang", "Settings / Языки"),
-        BotCommand("clean", "Cleanup / Уборка"),
-    ]
     # Set commands for default scope
-    await application.bot.set_my_commands(commands)
+    await application.bot.set_my_commands(BOT_COMMANDS)
 
     # Set commands for private chats
     await application.bot.set_my_commands(
-        commands, scope=BotCommandScopeAllPrivateChats()
+        BOT_COMMANDS, scope=BotCommandScopeAllPrivateChats()
     )
 
     # Set commands for group chats
     await application.bot.set_my_commands(
-        commands, scope=BotCommandScopeAllGroupChats()
+        BOT_COMMANDS, scope=BotCommandScopeAllGroupChats()
     )
 
     # Set commands for group chat administrators
     await application.bot.set_my_commands(
-        commands, scope=BotCommandScopeAllChatAdministrators()
+        BOT_COMMANDS, scope=BotCommandScopeAllChatAdministrators()
     )
 
     logger.info("Bot commands set successfully for all scopes.")
