@@ -12,7 +12,7 @@ It exposes a REST API to offload heavy ML tasks:
 
 ## Connection Details
 
-*   **Base URL**: `http://127.0.0.1:8000`
+*   **Base URL**: `http://127.0.0.1:8090`
 *   **Protocol**: HTTP/1.1
 *   **Authentication**: None (Localhost only)
 
@@ -99,7 +99,7 @@ import (
 	"os"
 )
 
-const ServiceURL = "http://127.0.0.1:8000"
+const ServiceURL = "http://127.0.0.1:8090"
 
 type TranslateResponse struct {
 	Translation string `json:"translation"`

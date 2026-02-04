@@ -25,25 +25,33 @@
     -   Fixed the "Content expired" / "Message not found" bug when using the translate button in DMs.
     -   Solution: Implemented DB caching of the original message text, decoupling the callback from the Telegram message history.
 -   **Silero TTS**:
-    -   Fixed crashing German TTS by updating speaker names (`friedrich`, `eva_k`) to match the installed V3 model.
+    - Fixed crashing German TTS by updating speaker names (`friedrich`, `eva_k`) to match the installed V3 model.
 
-### 3. 🏗 Infrastructure
+### 3. 🏗 Infrastructure & Integration
+-   **Roy AI Bridge (API)**:
+    -   Created a local HTTP API (`tg_translator.api`) using FastAPI to expose AI capabilities to the Roy Messenger backend (Go).
+    -   Endpoints: `/translate` (Smart), `/stt` (Whisper V3), `/tts` (Silero), `/dict/*` (Dictionary management).
+    -   Deployed as `roy-ai.service` on port **8090** (to avoid conflict with GlitchTip on 8000).
+    -   Implemented DB migration to support string-based `chat_id` (UUIDs) for external clients.
 -   **Proxy Integration**:
     -   Updated Systemd service configuration to support `tg-bot-proxy.service`.
     -   Implemented `Wants=` and `After=` dependencies to ensure correct startup order without hard crashing if the proxy fails.
+    -   Tuned connection pool limits and timeouts to handle proxy latency.
 -   **Tests**:
     -   Added comprehensive unit tests for Groq integration, fallback logic, and admin handlers.
     -   Fixed async test execution warnings.
     -   Suppressed noisy `pydub` deprecation warnings.
 
 ## 📝 Code Changes
--   **Dependencies**: Added `groq`.
+-   **Dependencies**: Added `groq`, `fastapi`, `uvicorn`, `python-multipart`.
 -   **Source**:
     -   `src/tg_translator/translator_service.py`: Added `Groq` client, `_transcribe_groq_sync`, `_translate_groq_sync`.
+    -   `src/tg_translator/api.py`: New FastAPI application.
+    -   `src/tg_translator/db.py`: Migrated schema to support `TEXT` chat IDs.
     -   `src/tg_translator/handlers/translation.py`: Added DB caching for interactive mode.
-    -   `src/tg_translator/handlers/admin.py`: Removed scope overrides.
+    -   `src/tg_translator/handlers/admin.py`: Removed scope overrides, restored menu refresh logic.
 -   **Tests**:
-    -   Created `tests/test_groq_translation.py`, `tests/test_groq_stt.py`, `tests/test_interactive_text.py`.
+    -   Created `tests/test_groq_translation.py`, `tests/test_groq_stt.py`, `tests/test_interactive_text.py`, `tests/test_api.py`.
 
 ## 🔮 Next Steps
 1.  **Monitor Proxy Stability**: Ensure `tg-bot-proxy` reliably handles traffic to Groq.

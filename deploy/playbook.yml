@@ -104,7 +104,7 @@
           User=root
           WorkingDirectory={{ app_dir }}
           EnvironmentFile=-{{ app_dir }}/.env
-          ExecStart={{ venv_dir }}/bin/uvicorn tg_translator.api:app --host 127.0.0.1 --port 8000 --workers 1
+          ExecStart={{ venv_dir }}/bin/uvicorn tg_translator.api:app --host 127.0.0.1 --port 8090 --workers 1
           Restart=always
           RestartSec=10
 

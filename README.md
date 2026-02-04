@@ -125,7 +125,7 @@ Docker support is in the backlog. Currently deployed via Ansible/Makefile.
 
 The project exposes a local HTTP API for internal services (like Roy Messenger) to utilize the AI capabilities without duplicating heavy ML models.
 
-*   **URL**: `http://127.0.0.1:8000`
+*   **URL**: `http://127.0.0.1:8090`
 *   **Service**: `roy-ai.service` (Systemd)
 
 ### Endpoints
