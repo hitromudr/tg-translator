@@ -218,7 +218,7 @@ class TranslatorService:
                 if gender == "female":
                     speaker = "en_1"  # Example female voice
                 else:
-                    speaker = "en_0"  # Neutral male
+                    speaker = "en_2"  # Distinct male voice
             else:
                 # Language not supported by our Silero config, fallback to gTTS
                 return None

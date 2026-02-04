@@ -14,7 +14,8 @@ async def tts_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     if not query:
         return
 
-    await query.answer()
+    # Providing feedback immediately to prevent spam clicking
+    await query.answer("🔊 Generating audio...")
 
     message = query.message
     if not message or not isinstance(message, Message):
