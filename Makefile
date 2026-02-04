@@ -1,6 +1,6 @@
 # Makefile for tg-translator
 
-.PHONY: help install dev-install format lint test run clean session-init deploy logs stop-remote start-remote restart-remote remote-status
+.PHONY: help install dev-install format lint test run clean session-init deploy logs stop-remote start-remote restart-remote remote-status logs-api restart-api status-api stop-api start-api
 
 # Default target
 .DEFAULT_GOAL := help
@@ -11,6 +11,7 @@ PYTHON := $(VENV)/bin/python
 PIP := $(VENV)/bin/pip
 SERVER_HOST := root@130.49.143.223
 SERVICE_NAME := tg-translator
+API_SERVICE_NAME := roy-ai
 
 help: ## Show this help message
 	@echo "Usage: make [target]"
@@ -77,3 +78,19 @@ start-remote: ## Start REMOTE service
 
 restart-remote: ## Restart REMOTE service manually
 	ssh $(SERVER_HOST) "systemctl restart $(SERVICE_NAME)"
+
+# --- Remote / Roy API ---
+logs-api: ## Watch REMOTE Roy API logs
+	ssh $(SERVER_HOST) "journalctl -u $(API_SERVICE_NAME) -f"
+
+status-api: ## Check REMOTE Roy API status
+	ssh $(SERVER_HOST) "systemctl status $(API_SERVICE_NAME)"
+
+restart-api: ## Restart REMOTE Roy API manually
+	ssh $(SERVER_HOST) "systemctl restart $(API_SERVICE_NAME)"
+
+stop-api: ## Stop REMOTE Roy API
+	ssh $(SERVER_HOST) "systemctl stop $(API_SERVICE_NAME)"
+
+start-api: ## Start REMOTE Roy API
+	ssh $(SERVER_HOST) "systemctl start $(API_SERVICE_NAME)"
