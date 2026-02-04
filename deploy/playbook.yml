@@ -90,9 +90,38 @@
           WantedBy=multi-user.target
       notify: Restart service
 
+    - name: Create Roy AI Bridge systemd service file
+      copy:
+        dest: /etc/systemd/system/roy-ai.service
+        content: |
+          [Unit]
+          Description=Roy AI Bridge (Python API)
+          After=network.target tg-bot-proxy.service
+          Wants=tg-bot-proxy.service
+
+          [Service]
+          Type=simple
+          User=root
+          WorkingDirectory={{ app_dir }}
+          EnvironmentFile=-{{ app_dir }}/.env
+          ExecStart={{ venv_dir }}/bin/uvicorn tg_translator.api:app --host 127.0.0.1 --port 8000 --workers 1
+          Restart=always
+          RestartSec=10
+
+          [Install]
+          WantedBy=multi-user.target
+      notify: Restart Roy API
+
     - name: Ensure service is enabled and started
       systemd:
         name: "{{ service_name }}"
+        enabled: yes
+        state: started
+        daemon_reload: yes
+
+    - name: Ensure Roy API is enabled and started
+      systemd:
+        name: roy-ai
         enabled: yes
         state: started
         daemon_reload: yes
@@ -101,5 +130,11 @@
     - name: Restart service
       systemd:
         name: "{{ service_name }}"
+        state: restarted
+        daemon_reload: yes
+
+    - name: Restart Roy API
+      systemd:
+        name: roy-ai
         state: restarted
         daemon_reload: yes

@@ -121,5 +121,41 @@ Docker support is in the backlog. Currently deployed via Ansible/Makefile.
 
 ---
 
+## 🔌 API Integration (Roy)
+
+The project exposes a local HTTP API for internal services (like Roy Messenger) to utilize the AI capabilities without duplicating heavy ML models.
+
+*   **URL**: `http://127.0.0.1:8000`
+*   **Service**: `roy-ai.service` (Systemd)
+
+### Endpoints
+
+#### 1. Translate (`POST /translate`)
+Smart translation using Groq (Llama 3) with Google Translate fallback.
+```json
+{
+  "text": "Hello world",
+  "source_lang": "en",
+  "target_lang": "ru"
+}
+```
+
+#### 2. Speech-to-Text (`POST /stt`)
+Transcribe audio files (OGG/MP3/WAV) using Groq Whisper V3 (with local fallback).
+*   **Content-Type**: `multipart/form-data`
+*   **Field**: `file=@audio.ogg`
+
+#### 3. Text-to-Speech (`POST /tts`)
+Generate audio from text using Silero TTS. Returns MP3 audio.
+```json
+{
+  "text": "Привет",
+  "lang": "ru",
+  "gender": "female"
+}
+```
+
+---
+
 ## 📝 License
 MIT
