@@ -181,7 +181,15 @@ async def voice_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
             "pt": "Este é um teste da voz selecionada.",
             "tr": "Bu seçilen sesin bir testidir.",
         }
-        test_text = text_map.get(lang, "This is a test of the selected voice.")
+
+        test_text = text_map.get(lang)
+        if not test_text:
+            base_text = "This is a test of the selected voice."
+            try:
+                test_text = await service.translate_direct(base_text, lang)
+            except Exception as e:
+                logger.error(f"Auto-translate error for voice test: {e}")
+                test_text = base_text
 
         try:
             path = await service.generate_audio(

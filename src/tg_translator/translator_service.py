@@ -185,6 +185,26 @@ class TranslatorService:
             text,  # original_text
         )
 
+    def _translate_direct_sync(self, text: str, target_lang: str) -> str:
+        """Simple direct translation without direction detection."""
+        try:
+            return cast(
+                str, GoogleTranslator(source="auto", target=target_lang).translate(text)
+            )
+        except Exception as e:
+            logger.error(f"Direct translation error: {e}")
+            return text
+
+    async def translate_direct(self, text: str, target_lang: str) -> str:
+        """
+        Asynchronously translate text to a specific language directly.
+        Used for generating test phrases for voice commands.
+        """
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(
+            self._executor, self._translate_direct_sync, text, target_lang
+        )
+
     def _generate_audio_silero_sync(
         self,
         text: str,
@@ -233,6 +253,18 @@ class TranslatorService:
                         speaker = "en_5"  # Better female voice
                     else:
                         speaker = "en_2"  # Distinct male voice
+                elif lang_code == "de":
+                    # v3_de supports: thorsten (male)
+                    speaker = "thorsten"
+                elif lang_code == "es":
+                    # v3_es supports: es_0 (male)
+                    speaker = "es_0"
+                elif lang_code == "fr":
+                    # v3_fr supports: fr_0...fr_5
+                    if gender == "female":
+                        speaker = "fr_1"
+                    else:
+                        speaker = "fr_0"
 
             # Determine model_id based on lang_code (presets only store speaker name)
             if lang_code == "ru":
@@ -242,6 +274,12 @@ class TranslatorService:
                 model_id = "v4_ua"
             elif lang_code == "en":
                 model_id = "v3_en"
+            elif lang_code == "de":
+                model_id = "v3_de"
+            elif lang_code == "es":
+                model_id = "v3_es"
+            elif lang_code == "fr":
+                model_id = "v3_fr"
             else:
                 # Language not supported by our Silero config, fallback to gTTS
                 return None

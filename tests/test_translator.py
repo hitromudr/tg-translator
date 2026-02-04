@@ -173,6 +173,16 @@ class TestTranslatorService(unittest.TestCase):
         result = self.service._translate_sync("Hello")
         self.assertIsNone(result)
 
+    def test_translate_direct_sync(self):
+        """Test simple direct translation."""
+        mock_instance = self.MockGoogleTranslator.return_value
+        mock_instance.translate.return_value = "Hola"
+
+        result = self.service._translate_direct_sync("Hello", "es")
+
+        self.assertEqual(result, "Hola")
+        self.MockGoogleTranslator.assert_called_with(source="auto", target="es")
+
     @patch("tg_translator.translator_service.WhisperModel")
     def test_transcribe_sync_whisper(self, MockWhisperModel):
         """Test Whisper transcription logic and resource config."""
