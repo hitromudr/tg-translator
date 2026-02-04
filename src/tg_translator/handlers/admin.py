@@ -88,9 +88,8 @@ async def mute_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 async def clean_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """
     Clean up bot messages.
-    Usage: /clean [count] (default 10)
-    Tries to delete previous N messages.
-    If bot is not admin, it only deletes its own messages.
+    Usage: /clean [target_count] (default 10, max 50)
+    Smart scanning: Scans up to 200 previous messages to find bot messages.
     """
     if not update.message or not update.effective_chat:
         return
@@ -98,41 +97,51 @@ async def clean_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     # Delete the command message itself first
     try:
         await update.message.delete()
-        logger.info(f"Deleted command message {update.message.message_id}")
     except Exception as e:
         logger.warning(f"Failed to delete command message: {e}")
 
     try:
-        count = int(context.args[0]) if context.args else 10
-        if count > 50:
-            count = 50
+        target_count = int(context.args[0]) if context.args else 10
+        if target_count > 50:
+            target_count = 50
     except (ValueError, IndexError):
-        count = 10
+        target_count = 10
+
+    # Scan limit: How far back to check.
+    # This prevents infinite loops if there are no bot messages.
+    scan_limit = 200
 
     logger.info(
-        f"Starting cleanup of {count} messages in chat {update.effective_chat.id}"
+        f"Starting smart cleanup. Target: {target_count}, Scan limit: {scan_limit} in chat {update.effective_chat.id}"
     )
 
-    message_id = update.message.message_id
+    current_id = update.message.message_id
     chat_id = update.effective_chat.id
 
-    # Try to delete previous messages blindly
     deleted_count = 0
-    failed_count = 0
-    for i in range(1, count + 1):
-        target_id = message_id - i
+    scanned_count = 0
+
+    # Iterate backwards
+    for i in range(1, scan_limit + 1):
+        # Stop if we reached our target deletion count
+        if deleted_count >= target_count:
+            break
+
+        scanned_count += 1
+        target_id = current_id - i
         if target_id < 1:
             break
+
         try:
+            # delete_message returns True on success
             await context.bot.delete_message(chat_id=chat_id, message_id=target_id)
             deleted_count += 1
-            logger.info(f"Deleted message {target_id}")
-        except Exception as e:
-            failed_count += 1
-            # Log reason why deletion failed (e.g. "Message can't be deleted")
-            logger.info(f"Failed to delete message {target_id}: {e}")
+            # logger.debug(f"Deleted message {target_id}")
+        except Exception:
+            # If failed (e.g. "Message can't be deleted" -> not ours, or "Message not found"),
+            # just continue scanning. We don't count this as a "deletion attempt" against our target_count.
             continue
 
     logger.info(
-        f"Cleanup finished. Deleted {deleted_count}, Failed {failed_count} messages."
+        f"Cleanup finished. Deleted {deleted_count} messages after scanning {scanned_count} IDs."
     )
