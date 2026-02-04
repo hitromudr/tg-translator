@@ -1,136 +1,119 @@
-# Telegram Translator Bot
+# TG Translator Bot 🤖
 
-**TG-Translator** — это удобный Телеграм-бот для групповых чатов, который автоматически переводит сообщения "на лету".
+A powerful, self-hosted Telegram bot for seamless multilingual communication in group chats. Designed for privacy, speed, and high-quality voice interactions.
 
-Главная особенность — ненавязчивость. Бот присылает перевод в виде **спойлера** (скрытого текста). Перевод виден только тем, кто кликнет на него, сохраняя чистоту переписки.
+![Status](https://img.shields.io/badge/Status-Active-green)
+![Python](https://img.shields.io/badge/Python-3.10+-blue)
+![STT](https://img.shields.io/badge/STT-Whisper-orange)
+![TTS](https://img.shields.io/badge/TTS-Silero-purple)
 
-## 🚀 Возможности
+## 🚀 Features
 
-*   **Автоматическое определение языка**:
-    *   Если текст содержит кириллицу (Русский) → переводит на **Английский**.
-    *   Если текст на латинице (English и др.) → переводит на **Русский**.
-*   **🎤 Голосовые сообщения**: Бот распознает речь, транскрибирует и переводит голосовые сообщения.
-*   **Режим "Анти-спам"**: Перевод отправляется в формате `||спойлера||`.
-*   **Приватность**: Бот игнорирует команды и служебные сообщения, реагируя только на текст.
+### 💬 Translation
+*   **Automatic Translation**: Instantly translates text messages between configured languages (default: RU ↔ EN).
+*   **Smart Dictionary**: Supports custom term replacements (e.g., specific names or slang) with automatic case handling.
+*   **Auto-Detection**: Intelligently detects source language, even when mixed with dictionary substitutions.
 
-## 📖 Пользовательский Словарь
+### 🎙 Voice (Speech-to-Text)
+*   **Whisper AI**: Uses OpenAI's **Whisper (Small)** model running locally for high-accuracy recognition of accents, fast speech, and mixed languages.
+*   **Privacy-First**: Audio is processed on your server, never sent to third-party clouds.
 
-Бот поддерживает управление словарем для исправления частых ошибок перевода (например, имен или сленга).
+### 🔊 Voice (Text-to-Speech)
+*   **Silero TTS**: High-quality neural speech synthesis for **Russian, English, Ukrainian, German, Spanish, French**.
+*   **Voice Control**:
+    *   Switch between **Male** and **Female** voices globally (`/voice male/female`).
+    *   Set specific speakers for specific languages (`/voice set`).
+    *   Test voices before using (`/voice test`).
+*   **Fallback**: Automatically degrades to Google TTS for unsupported languages.
 
-### Команды
-*   `/dict add Ян Ian` — добавить правило: "Ян" переводить как "Ian". Бот **автоматически добавит падежи** (Яна, Яну, Яном...).
-*   `/dict add "шариковая ручка" "ballpoint pen"` — для фраз используйте кавычки.
-*   `/dict remove Ян` — удалить правило.
-*   `/dict list` — показать список правил для текущего чата.
+### ⚙️ Modes & UX
+*   **Auto Mode** (`/start`): Translates everything immediately.
+*   **Interactive Mode** (`/mute`): Silent. Shows a minimal button (`📝` / `🎤`) to translate on demand.
+*   **Off Mode** (`/stop`): Bot is completely disabled until reactivated.
+*   **Smart Clean**: `/clean` command intelligently removes bot clutter without deleting user messages.
 
-### Особенности
-*   **Приоритет:** Длинные фразы заменяются раньше коротких слов.
-*   **Регистр:** Поиск нечувствителен к регистру (найдет "ян", "Ян", "ЯН"), но заменит на то, что вы указали во втором аргументе.
-*   **Контекст:** Словарь применяется **до** перевода, что позволяет корректировать смысл.
+---
 
-## 🛠 Требования
+## 🛠 Commands
 
+### General
+*   `/start` - Enable **Auto Mode** (Translates all messages).
+*   `/stop` - Enable **Off Mode** (Bot ignores everything).
+*   `/mute` - Enable **Interactive Mode** (Reply with "Translate" button).
+*   `/help` - Show help message.
+
+### Settings
+*   `/lang set <L1> <L2>` - Set language pair (e.g., `/lang set ru en`).
+*   `/lang status` - Show current languages.
+*   `/clean [N]` - Delete last N bot messages (smart scan).
+
+### Voice Control
+*   `/voice male` / `/voice female` - Set global gender preference.
+*   `/voice list [lang]` - List available speakers for a language.
+*   `/voice test <lang> <speaker>` - Generate a test sample.
+*   `/voice set <lang> <gender> <speaker>` - Assign a specific speaker to a language/gender.
+*   `/voice reset` - Clear custom presets.
+
+### Dictionary
+*   `/dict add <word> <translation>` - Add a custom term.
+*   `/dict remove <word>` - Remove a term.
+*   `/dict list` - List all terms.
+*   `/dict export` / `/dict import` - Backup/Restore dictionary.
+
+---
+
+## 🏗 Architecture
+
+The bot is designed to run on a standard VPS (e.g., 4 vCPU, 8GB RAM).
+
+*   **Core**: Python 3.10+, `python-telegram-bot`.
+*   **Database**: SQLite (with automatic migrations).
+*   **STT Engine**: `faster-whisper` (optimized for CPU).
+*   **TTS Engine**: `silero-tts` (via `torch` + `soundfile`).
+*   **Translation**: Google Translate (via `deep-translator`).
+
+### Performance Limits
+*   **Whisper**: Configured to use `int8` quantization and limited to 2 CPU threads to coexist safely with other high-load services (like LiveKit).
+*   **Silero**: Lazy-loaded into RAM only when needed.
+
+---
+
+## 📦 Deployment
+
+### Prerequisites
 *   Python 3.10+
-*   `ffmpeg` (требуется для конвертации аудио)
-*   Токен бота от [@BotFather](https://t.me/BotFather)
+*   ffmpeg (installed on system)
+*   git
 
-## ⚙️ Установка и Запуск
+### Installation (Local/VPS)
 
-### 1. Подготовка
-Клонируйте репозиторий и создайте файл конфигурации:
-
-```bash
-git clone https://github.com/hitromudr/tg-translator.git
-cd tg-translator
-
-# Копируем пример конфига
-cp config_example.txt .env
-```
-
-Отредактируйте файл `.env`, вставив туда токен вашего бота:
-```ini
-TELEGRAM_BOT_TOKEN=ващ_токен_здесь
-```
-
-### 2. Установка зависимостей
-Для работы с голосовыми сообщениями требуется установить `ffmpeg` в систему:
-```bash
-# Ubuntu/Debian
-sudo apt update && sudo apt install ffmpeg
-```
-
-Затем установите Python-зависимости:
-```bash
-make install
-```
-
-### 3. Локальный запуск
-```bash
-make run
-```
-
-## 📝 Настройка в Telegram (Важно!)
-
-Чтобы бот мог видеть и переводить сообщения в групповых чатах, необходимо отключить **Group Privacy**. Без этого он будет видеть только команды и упоминания.
-
-1.  Напишите [@BotFather](https://t.me/BotFather).
-2.  Отправьте команду `/mybots`.
-3.  Выберите вашего бота.
-4.  Перейдите в **Bot Settings** → **Group Privacy**.
-5.  Нажмите **Turn off**.
-
-После этого добавьте бота в чат (или удалите и добавьте снова, если он уже там).
-
-## 💻 Разработка
-
-В проекте предусмотрены команды для тестирования и линтинга:
-
-*   `make test` — запуск тестов.
-*   `make format` — автоформатирование кода (black, isort).
-*   `make lint` — проверка типов и стиля кода.
-
-## 🌐 Деплой
-
-Проект готов к развертыванию через **Ansible**.
-
-1.  Настройте сервер в `deploy/inventory`.
-2.  Запустите плейбук:
+1.  **Clone the repository:**
     ```bash
-    make deploy
+    git clone https://github.com/hitromudr/tg-translator.git
+    cd tg-translator
     ```
 
-Для просмотра логов на удаленном сервере:
-```bash
-make logs
-```
+2.  **Create `.env` file:**
+    ```bash
+    cp .env.example .env
+    # Edit .env and add your TELEGRAM_BOT_TOKEN
+    ```
 
-## 🧪 Тестирование и Локальная Разработка
+3.  **Install dependencies:**
+    ```bash
+    make install
+    # or for dev: make dev-install
+    ```
 
-Для безопасного тестирования изменений (например, новых команд словаря) используйте следующий процесс:
+4.  **Run:**
+    ```bash
+    make run
+    ```
 
-### 1. Подготовка окружения
-Убедитесь, что у вас есть файл `.env` с валидным токеном `TELEGRAM_BOT_TOKEN`.
+### Docker (Planned)
+Docker support is in the backlog. Currently deployed via Ansible/Makefile.
 
-### 2. Режим работы
-**Вариант А: Тестовый бот (Рекомендуется)**
-Создайте отдельного бота в @BotFather и используйте его токен. Это позволяет тестировать функционал параллельно с работающим продакшеном.
+---
 
-**Вариант Б: Локальный перехват (Prod бот)**
-Если вы используете токен основного бота, необходимо временно отключить его на сервере, чтобы избежать конфликтов (Telegram API не допускает два одновременных подключения `getUpdates`).
-
-```bash
-# 1. Остановите удаленный сервис
-make stop-remote
-
-# 2. Запустите бота локально
-make run
-
-# ... проводите тесты ...
-
-# 3. После завершения верните удаленный сервис в строй
-make start-remote
-```
-
-## 📄 Лицензия
-
+## 📝 License
 MIT
