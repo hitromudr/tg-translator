@@ -42,6 +42,7 @@ clean: ## Clean up build artifacts and cache
 	rm -rf .mypy_cache
 	rm -rf dist
 	rm -rf build
+	rm -rf tmp
 	rm -rf *.egg-info
 	find . -type d -name "__pycache__" -exec rm -rf {} +
 

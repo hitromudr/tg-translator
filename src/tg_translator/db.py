@@ -29,9 +29,19 @@ class Database:
                     CREATE TABLE IF NOT EXISTS settings (
                         chat_id INTEGER PRIMARY KEY,
                         primary_lang TEXT NOT NULL DEFAULT 'ru',
-                        secondary_lang TEXT NOT NULL DEFAULT 'en'
+                        secondary_lang TEXT NOT NULL DEFAULT 'en',
+                        mode TEXT NOT NULL DEFAULT 'auto'
                     )
                     """)
+
+                # Check for migration (add mode column if missing)
+                cursor.execute("PRAGMA table_info(settings)")
+                columns = [info[1] for info in cursor.fetchall()]
+                if "mode" not in columns:
+                    logger.info("Migrating settings: adding mode column...")
+                    cursor.execute(
+                        "ALTER TABLE settings ADD COLUMN mode TEXT NOT NULL DEFAULT 'auto'"
+                    )
 
                 # 2. Create exports table for dictionary sharing
                 cursor.execute("""
@@ -169,12 +179,18 @@ class Database:
         try:
             with self._get_connection() as conn:
                 cursor = conn.cursor()
+                # Ensure row exists
+                cursor.execute(
+                    "INSERT OR IGNORE INTO settings (chat_id) VALUES (?)", (chat_id,)
+                )
+                # Update languages
                 cursor.execute(
                     """
-                    INSERT OR REPLACE INTO settings (chat_id, primary_lang, secondary_lang)
-                    VALUES (?, ?, ?)
+                    UPDATE settings
+                    SET primary_lang = ?, secondary_lang = ?
+                    WHERE chat_id = ?
                     """,
-                    (chat_id, primary, secondary),
+                    (primary, secondary, chat_id),
                 )
                 conn.commit()
             return True
@@ -202,6 +218,39 @@ class Database:
         except Exception as e:
             logger.error(f"Error fetching languages: {e}")
             return ("ru", "en")
+
+    def set_mode(self, chat_id: int, mode: str) -> bool:
+        """Set the operation mode for a chat (auto, manual, etc)."""
+        try:
+            with self._get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    "INSERT OR IGNORE INTO settings (chat_id) VALUES (?)", (chat_id,)
+                )
+                cursor.execute(
+                    "UPDATE settings SET mode = ? WHERE chat_id = ?", (mode, chat_id)
+                )
+                conn.commit()
+            return True
+        except Exception as e:
+            logger.error(f"Error setting mode: {e}")
+            return False
+
+    def get_mode(self, chat_id: int) -> str:
+        """Get the operation mode for a chat. Default: 'auto'."""
+        try:
+            with self._get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    "SELECT mode FROM settings WHERE chat_id = ?", (chat_id,)
+                )
+                row = cursor.fetchone()
+                if row:
+                    return cast(str, row[0])
+                return "auto"
+        except Exception as e:
+            logger.error(f"Error getting mode: {e}")
+            return "auto"
 
     # --- Import/Export Methods ---
 
