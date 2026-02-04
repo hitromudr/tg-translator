@@ -6,6 +6,7 @@ import uuid
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Dict, Optional, cast
 
+import soundfile as sf  # type: ignore
 import torch  # type: ignore
 import torchaudio  # type: ignore
 from deep_translator import GoogleTranslator  # type: ignore
@@ -253,8 +254,8 @@ class TranslatorService:
             os.makedirs("tmp", exist_ok=True)
             wav_filename = f"tmp/tts_silero_{uuid.uuid4()}.wav"
 
-            # Audio is 1D tensor [samples]. Save expects [channels, samples]
-            torchaudio.save(wav_filename, audio.unsqueeze(0), sample_rate)
+            # Audio is 1D tensor [samples]. Save using soundfile (numpy array).
+            sf.write(wav_filename, audio.numpy(), sample_rate)
 
             # Convert to MP3 using pydub for compatibility/size
             mp3_filename = wav_filename.replace(".wav", ".mp3")
