@@ -35,7 +35,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             [InlineKeyboardButton("Translate ⬇️", callback_data="translate_this")]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
-        await update.message.reply_text("🌐", reply_markup=reply_markup)
+        await update.message.reply_text("📝\u200b", reply_markup=reply_markup)
         return
 
     user = update.message.from_user
@@ -118,7 +118,7 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 
                 # Send placeholder
                 sent_msg = await update.message.reply_text(
-                    "🎤",
+                    "🎤\u200b",
                     reply_markup=reply_markup,
                 )
 

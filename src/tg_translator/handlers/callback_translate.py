@@ -34,7 +34,12 @@ async def translate_callback(
     translator_service = context.bot_data["translator_service"]
 
     # Check if this is a voice transcription message placeholder
-    if bot_message.text and "🎤" in bot_message.text:
+    # Clean up zero-width space if present
+    clean_msg_text = (
+        bot_message.text.replace("\u200b", "").strip() if bot_message.text else ""
+    )
+
+    if "🎤" in clean_msg_text:
         is_voice = True
 
         # Try to fetch transcription from DB (Lazy Load)
@@ -47,7 +52,7 @@ async def translate_callback(
             # Fallback: Extract text from message if present (legacy support)
             # Remove "Voice message" placeholder text if present
             cleaned_text = (
-                bot_message.text.replace("🎤", "").replace("Voice message", "").strip()
+                clean_msg_text.replace("🎤", "").replace("Voice message", "").strip()
             )
             if cleaned_text:
                 text_to_translate = cleaned_text
@@ -94,11 +99,8 @@ async def translate_callback(
     except Exception as e:
         logger.error(f"Error editing message with translation: {e}")
         # In case of formatting error, fallback to plain text
-        # Use transcribed text for fallback if available, otherwise message text (placeholder)
-        source_text = (
-            transcription_text if is_voice and transcription_text else bot_message.text
-        )
+        # Use original text for fallback
         await bot_message.edit_text(
-            f"{source_text}\n\nTranslation: {translation}",
+            f"{text_to_translate}\n\nTranslation: {translation}",
             reply_markup=reply_markup,
         )
