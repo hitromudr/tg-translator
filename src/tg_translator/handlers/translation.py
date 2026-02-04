@@ -113,7 +113,7 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
                             "📝 Text", callback_data="transcribe_this"
                         ),
                         InlineKeyboardButton(
-                            "🌐 Translate", callback_data="translate_this"
+                            "🌐 Transl.", callback_data="translate_this"
                         ),
                     ]
                 ]
