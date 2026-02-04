@@ -184,7 +184,9 @@ class TranslatorService:
             text,  # original_text
         )
 
-    def _generate_audio_silero_sync(self, text: str, lang: str) -> Optional[str]:
+    def _generate_audio_silero_sync(
+        self, text: str, lang: str, gender: str = "male"
+    ) -> Optional[str]:
         """
         Generate audio using Silero TTS (high quality).
         Returns path to generated file or None if lang not supported/error.
@@ -197,18 +199,25 @@ class TranslatorService:
             model_id = None
 
             if lang_code == "ru":
-                # v4_ru supports: aidar, baya, kseniya, xenia, eugene, random
+                # v4_ru supports: aidar (male), kseniya (female), eugene (male), baya (female)
                 model_id = "v4_ru"
-                speaker = "kseniya"
+                if gender == "female":
+                    speaker = "kseniya"
+                else:
+                    speaker = "aidar"
             elif lang_code in ["uk", "ua"]:
-                # v4_ua supports: mykyta
+                # v4_ua supports: mykyta (male).
                 lang_code = "ua"  # Silero uses 'ua' code
                 model_id = "v4_ua"
+                # Fallback to male if female not available in standard package
                 speaker = "mykyta"
             elif lang_code == "en":
                 # v3_en supports: en_0 .. en_117
                 model_id = "v3_en"
-                speaker = "en_0"  # Neutral male
+                if gender == "female":
+                    speaker = "en_1"  # Example female voice
+                else:
+                    speaker = "en_0"  # Neutral male
             else:
                 # Language not supported by our Silero config, fallback to gTTS
                 return None
@@ -261,13 +270,15 @@ class TranslatorService:
             logger.error(f"Silero TTS error for {lang}: {e}")
             return None
 
-    def _generate_audio_sync(self, text: str, lang: str) -> Optional[str]:
+    def _generate_audio_sync(
+        self, text: str, lang: str, gender: str = "male"
+    ) -> Optional[str]:
         """
         Synchronous audio generation.
         Tries Silero TTS first, falls back to gTTS.
         """
         # Try Silero first
-        silero_path = self._generate_audio_silero_sync(text, lang)
+        silero_path = self._generate_audio_silero_sync(text, lang, gender)
         if silero_path:
             return silero_path
 
@@ -283,14 +294,16 @@ class TranslatorService:
             logger.error(f"gTTS generation error: {e}")
             return None
 
-    async def generate_audio(self, text: str, lang: str) -> Optional[str]:
+    async def generate_audio(
+        self, text: str, lang: str, gender: str = "male"
+    ) -> Optional[str]:
         """
         Asynchronously generate audio for the given text.
         Returns path to the generated MP3 file.
         """
         loop = asyncio.get_running_loop()
         return await loop.run_in_executor(
-            self._executor, self._generate_audio_sync, text, lang
+            self._executor, self._generate_audio_sync, text, lang, gender
         )
 
     def _get_whisper_model(self) -> WhisperModel:

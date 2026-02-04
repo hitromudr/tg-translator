@@ -85,6 +85,33 @@ async def mute_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         await update.message.reply_text("Failed to mute bot.")
 
 
+async def voice_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Set voice gender: /voice male or /voice female."""
+    if not update.message or not update.effective_chat:
+        return
+
+    args = context.args
+    db = context.bot_data["db"]
+
+    if not args:
+        # Show status
+        current = db.get_voice_gender(update.effective_chat.id)
+        await update.message.reply_text(
+            f"Current voice: {current}\nUsage: /voice male | female"
+        )
+        return
+
+    gender = args[0].lower()
+    if gender not in ["male", "female"]:
+        await update.message.reply_text("Invalid gender. Use: male or female")
+        return
+
+    if db.set_voice_gender(update.effective_chat.id, gender):
+        await update.message.reply_text(f"Voice set to: {gender}")
+    else:
+        await update.message.reply_text("Failed to set voice.")
+
+
 async def clean_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """
     Clean up bot messages.

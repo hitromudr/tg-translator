@@ -30,17 +30,23 @@ class Database:
                         chat_id INTEGER PRIMARY KEY,
                         primary_lang TEXT NOT NULL DEFAULT 'ru',
                         secondary_lang TEXT NOT NULL DEFAULT 'en',
-                        mode TEXT NOT NULL DEFAULT 'auto'
+                        mode TEXT NOT NULL DEFAULT 'auto',
+                        voice_gender TEXT NOT NULL DEFAULT 'male'
                     )
                     """)
 
-                # Check for migration (add mode column if missing)
+                # Check for migration (add columns if missing)
                 cursor.execute("PRAGMA table_info(settings)")
                 columns = [info[1] for info in cursor.fetchall()]
                 if "mode" not in columns:
                     logger.info("Migrating settings: adding mode column...")
                     cursor.execute(
                         "ALTER TABLE settings ADD COLUMN mode TEXT NOT NULL DEFAULT 'auto'"
+                    )
+                if "voice_gender" not in columns:
+                    logger.info("Migrating settings: adding voice_gender column...")
+                    cursor.execute(
+                        "ALTER TABLE settings ADD COLUMN voice_gender TEXT NOT NULL DEFAULT 'male'"
                     )
 
                 # 2. Create exports table for dictionary sharing
@@ -260,6 +266,44 @@ class Database:
         except Exception as e:
             logger.error(f"Error getting mode: {e}")
             return "auto"
+
+    def set_voice_gender(self, chat_id: int, gender: str) -> bool:
+        """Set voice gender for a chat (male/female)."""
+        try:
+            gender = gender.lower()
+            if gender not in ["male", "female"]:
+                return False
+
+            with self._get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    "INSERT OR IGNORE INTO settings (chat_id) VALUES (?)", (chat_id,)
+                )
+                cursor.execute(
+                    "UPDATE settings SET voice_gender = ? WHERE chat_id = ?",
+                    (gender, chat_id),
+                )
+                conn.commit()
+            return True
+        except Exception as e:
+            logger.error(f"Error setting voice gender: {e}")
+            return False
+
+    def get_voice_gender(self, chat_id: int) -> str:
+        """Get voice gender for a chat. Default: 'male'."""
+        try:
+            with self._get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    "SELECT voice_gender FROM settings WHERE chat_id = ?", (chat_id,)
+                )
+                row = cursor.fetchone()
+                if row:
+                    return cast(str, row[0])
+                return "male"
+        except Exception as e:
+            logger.error(f"Error getting voice gender: {e}")
+            return "male"
 
     # --- Import/Export Methods ---
 

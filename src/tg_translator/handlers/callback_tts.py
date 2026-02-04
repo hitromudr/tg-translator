@@ -38,6 +38,7 @@ async def tts_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     translator_service = context.bot_data["translator_service"]
 
     l1, l2 = db.get_languages(chat_id)
+    gender = db.get_voice_gender(chat_id)
 
     # Simple heuristic for language detection to decide which voice to use
     lang = l2
@@ -61,7 +62,7 @@ async def tts_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         # else keep default l2
 
     try:
-        file_path = await translator_service.generate_audio(text, lang)
+        file_path = await translator_service.generate_audio(text, lang, gender)
         if file_path:
             await message.reply_voice(voice=open(file_path, "rb"))
             os.remove(file_path)

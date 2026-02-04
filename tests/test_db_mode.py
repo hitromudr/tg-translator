@@ -62,6 +62,27 @@ class TestDatabaseMode(unittest.TestCase):
         # 5. Verify mode is preserved
         self.assertEqual(self.db.get_mode(chat_id), "manual")
 
+    def test_voice_gender(self):
+        """Test setting and retrieving voice gender."""
+        chat_id = 999
+
+        # Default should be male
+        self.assertEqual(self.db.get_voice_gender(chat_id), "male")
+
+        # Set to female
+        success = self.db.set_voice_gender(chat_id, "female")
+        self.assertTrue(success)
+        self.assertEqual(self.db.get_voice_gender(chat_id), "female")
+
+        # Set back to male
+        self.db.set_voice_gender(chat_id, "male")
+        self.assertEqual(self.db.get_voice_gender(chat_id), "male")
+
+        # Invalid gender should fail
+        success = self.db.set_voice_gender(chat_id, "robot")
+        self.assertFalse(success)
+        self.assertEqual(self.db.get_voice_gender(chat_id), "male")
+
 
 if __name__ == "__main__":
     unittest.main()

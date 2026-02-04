@@ -209,8 +209,8 @@ class TestTranslatorService(unittest.TestCase):
         MockTorch.hub.load.return_value = (mock_model, "example")
         MockTorch.device.return_value = "cpu"
 
-        # Act
-        path = self.service._generate_audio_sync("Привет", "ru")
+        # Act - Default male (aidar for RU)
+        path = self.service._generate_audio_sync("Привет", "ru", "male")
 
         # Assert
         # Should verify it called Silero via torch.hub
@@ -218,6 +218,15 @@ class TestTranslatorService(unittest.TestCase):
         _, kwargs = MockTorch.hub.load.call_args
         self.assertEqual(kwargs["language"], "ru")
         self.assertEqual(kwargs["speaker"], "v4_ru")
+
+        # Verify apply_tts call speaker
+        args, kwargs = mock_model.apply_tts.call_args
+        self.assertEqual(kwargs["speaker"], "aidar")
+
+        # Act - Female (kseniya for RU)
+        path = self.service._generate_audio_sync("Привет", "ru", "female")
+        args, kwargs = mock_model.apply_tts.call_args
+        self.assertEqual(kwargs["speaker"], "kseniya")
 
         # Should verify saving
         MockTorchaudio.save.assert_called()
@@ -232,7 +241,7 @@ class TestTranslatorService(unittest.TestCase):
         mock_tts.save = MagicMock()
 
         # Act
-        path = self.service._generate_audio_sync("Ni hao", "zh")
+        path = self.service._generate_audio_sync("Ni hao", "zh", "male")
 
         # Assert
         # Silero logic should return None for 'zh', triggering gTTS

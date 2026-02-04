@@ -27,6 +27,7 @@ from tg_translator.handlers.admin import (
     mute_command,
     start_command,
     stop_command,
+    voice_command,
 )
 from tg_translator.handlers.callback_translate import translate_callback
 from tg_translator.handlers.callback_tts import tts_callback
@@ -100,6 +101,7 @@ def main() -> None:
     application.add_handler(CommandHandler("help", help_command))
     application.add_handler(CommandHandler("dict", dict_command))
     application.add_handler(CommandHandler("lang", lang_command))
+    application.add_handler(CommandHandler("voice", voice_command))
     application.add_handler(CommandHandler("clean", clean_command))
 
     application.add_handler(
