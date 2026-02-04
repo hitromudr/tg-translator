@@ -46,17 +46,31 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 
 
 async def stop_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Pause the bot (switch to manual mode)."""
+    """Stop the bot (switch to 'off' mode)."""
     if not update.message or not update.effective_chat:
         return
 
     db = context.bot_data["db"]
-    if db.set_mode(update.effective_chat.id, "manual"):
+    if db.set_mode(update.effective_chat.id, "off"):
         await update.message.reply_text(
-            "Bot paused. I will not translate automatically until you type /start."
+            "Bot stopped. I will not translate anything until you type /start or /mute."
         )
     else:
-        await update.message.reply_text("Failed to pause bot.")
+        await update.message.reply_text("Failed to stop bot.")
+
+
+async def mute_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Switch to interactive mode (translation by button)."""
+    if not update.message or not update.effective_chat:
+        return
+
+    db = context.bot_data["db"]
+    if db.set_mode(update.effective_chat.id, "interactive"):
+        await update.message.reply_text(
+            "Bot muted. I will reply with a 'Translate' button instead of auto-translating."
+        )
+    else:
+        await update.message.reply_text("Failed to mute bot.")
 
 
 async def clean_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:

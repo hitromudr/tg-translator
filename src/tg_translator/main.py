@@ -23,9 +23,11 @@ from tg_translator.db import Database
 from tg_translator.handlers.admin import (
     clean_command,
     help_command,
+    mute_command,
     start_command,
     stop_command,
 )
+from tg_translator.handlers.callback_translate import translate_callback
 from tg_translator.handlers.callback_tts import tts_callback
 from tg_translator.handlers.cmd_dictionary import dict_command
 from tg_translator.handlers.cmd_settings import lang_command
@@ -46,7 +48,8 @@ async def post_init(application: Application) -> None:
     """Set up the bot's commands."""
     commands = [
         BotCommand("start", "Start bot / Запуск"),
-        BotCommand("stop", "Pause bot / Пауза"),
+        BotCommand("stop", "Stop bot / Стоп"),
+        BotCommand("mute", "Interactive / Интерактив"),
         BotCommand("help", "Help / Справка"),
         BotCommand("dict", "Manage dictionary / Словарь"),
         BotCommand("lang", "Settings / Языки"),
@@ -101,11 +104,15 @@ def main() -> None:
     # Command handlers
     application.add_handler(CommandHandler("start", start_command))
     application.add_handler(CommandHandler("stop", stop_command))
+    application.add_handler(CommandHandler("mute", mute_command))
     application.add_handler(CommandHandler("help", help_command))
     application.add_handler(CommandHandler("dict", dict_command))
     application.add_handler(CommandHandler("lang", lang_command))
     application.add_handler(CommandHandler("clean", clean_command))
 
+    application.add_handler(
+        CallbackQueryHandler(translate_callback, pattern="^translate_this$")
+    )
     application.add_handler(CallbackQueryHandler(tts_callback))
 
     # on non command i.e message - translate the message on Telegram

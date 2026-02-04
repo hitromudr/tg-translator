@@ -21,13 +21,21 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     # Check chat mode
     db = context.bot_data["db"]
     mode = db.get_mode(update.effective_chat.id)
-    if mode == "manual":
+    if mode == "off" or mode == "manual":
         return
 
     original_text = update.message.text
 
     # Ignore messages without text content (emojis-only, punctuation-only)
     if not re.search(r"\w", original_text):
+        return
+
+    if mode == "interactive":
+        keyboard = [
+            [InlineKeyboardButton("Translate ⬇️", callback_data="translate_this")]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        await update.message.reply_text("Translate?", reply_markup=reply_markup)
         return
 
     user = update.message.from_user
@@ -72,7 +80,7 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     # Check chat mode
     db = context.bot_data["db"]
     mode = db.get_mode(update.effective_chat.id)
-    if mode == "manual":
+    if mode == "off" or mode == "manual":
         return
 
     user = update.message.from_user
@@ -97,6 +105,24 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 
         if transcription:
             logger.info(f"Transcribed text: {transcription[:50]}...")
+
+            if mode == "interactive":
+                keyboard = [
+                    [
+                        InlineKeyboardButton(
+                            "Translate ⬇️", callback_data="translate_this"
+                        )
+                    ]
+                ]
+                reply_markup = InlineKeyboardMarkup(keyboard)
+                await update.message.reply_text(
+                    f"🎤 <i>{html.escape(transcription)}</i>",
+                    parse_mode=ParseMode.HTML,
+                    reply_markup=reply_markup,
+                )
+                logger.info("Sent transcription for voice message (interactive).")
+                return
+
             translation = await translator_service.translate_message(
                 transcription, update.effective_chat.id
             )
