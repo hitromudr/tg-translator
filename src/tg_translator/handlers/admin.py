@@ -37,23 +37,37 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Send a help message when the command /help is issued."""
-    if not update.message:
+    if not update.message or not update.effective_chat:
         return
+
+    # Force update commands for this specific chat
+    try:
+        await context.bot.set_my_commands(
+            BOT_COMMANDS, scope=BotCommandScopeChat(update.effective_chat.id)
+        )
+    except Exception as e:
+        logger.error(
+            f"Failed to refresh commands for chat {update.effective_chat.id}: {e}"
+        )
+
     await update.message.reply_text(
-        "🤖 <b>Справка:</b>\n\n"
-        "💬 <b>Перевод:</b> Просто пишите текст или отправляйте голосовые — я переведу их автоматически.\n\n"
-        "📖 <b>Словарь (если я ошибаюсь в именах):</b>\n"
-        "• <code>/dict add Ян Ian</code> — научить меня переводить 'Ян' как 'Ian' (падежи добавлю сам!).\n"
-        '• <code>/dict add "фраза с пробелами" Перевод</code> — используйте кавычки для фраз.\n'
-        "• <code>/dict list</code> — посмотреть список замен.\n"
-        "• <code>/dict remove Ян</code> — забыть замену.\n"
-        "• <code>/dict export</code> — получить код для переноса словаря.\n"
-        "• <code>/dict import CODE</code> — загрузить словарь по коду.\n\n"
-        "🌍 <b>Языки / Languages:</b>\n"
-        "• <code>/lang set ru de</code> — переключить пару на Русский-Немецкий.\n"
-        "• <code>/lang reset</code> — сброс (ru-en).\n\n"
-        "🇬🇧 <b>English:</b>\n"
-        "Just type messages. Use <code>/dict</code> to fix translations, <code>/lang</code> to switch languages.",
+        "🤖 <b>Справка / Help</b>\n\n"
+        "⚙️ <b>Режимы работы / Modes:</b>\n"
+        "• /start — <b>Авто</b> (переводит всё подряд / translates everything).\n"
+        "• /mute — <b>Интерактив</b> (кнопка перевода по запросу / translate on click).\n"
+        "• /stop — <b>Выкл</b> (бот спит / bot disabled).\n\n"
+        "🗣 <b>Голос / Voice:</b>\n"
+        "• <code>/voice male</code> | <code>female</code> — Пол голоса / Voice gender.\n"
+        "• <code>/voice test en en_45</code> — Тест спикера / Test specific speaker.\n"
+        "• <code>/voice set en male en_45</code> — Назначить спикера / Set preset.\n\n"
+        "📖 <b>Словарь / Dictionary:</b>\n"
+        "• <code>/dict add Ян Ian</code> — Добавить замену / Add term.\n"
+        "• <code>/dict remove Ян</code> — Удалить / Remove.\n"
+        "• <code>/dict list</code> — Список / List.\n"
+        "• <code>/dict export</code> | <code>import</code> — Бэкап / Backup.\n\n"
+        "🌍 <b>Настройки / Settings:</b>\n"
+        "• <code>/lang set ru en</code> — Пара языков / Language pair.\n"
+        "• <code>/clean</code> — Очистка сообщений бота / Clean bot messages.",
         parse_mode=ParseMode.HTML,
     )
 
@@ -102,6 +116,16 @@ async def voice_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     db = context.bot_data["db"]
     service = context.bot_data["translator_service"]
     chat_id = update.effective_chat.id
+
+    # Force update commands for this specific chat
+    try:
+        await context.bot.set_my_commands(
+            BOT_COMMANDS, scope=BotCommandScopeChat(update.effective_chat.id)
+        )
+    except Exception as e:
+        logger.error(
+            f"Failed to refresh commands for chat {update.effective_chat.id}: {e}"
+        )
 
     if not args:
         current_gender = db.get_voice_gender(chat_id)
