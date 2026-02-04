@@ -66,37 +66,19 @@ class TestTranslatorService(unittest.TestCase):
         # We check if it was initialized with target='ru'
         self.MockGoogleTranslator.assert_any_call(source="auto", target="ru")
 
-    def test_translate_sync_fallback_to_secondary(self):
+    def test_translate_sync_fallback_to_secondary_heuristic(self):
         """
-        Test case where translation to primary language returns same text,
-        implying source IS primary, so we translate to secondary.
+        Test case where heuristic detects primary language (Cyrillic),
+        so we skip the check and translate directly to secondary.
         """
         mock_instance = self.MockGoogleTranslator.return_value
 
         # Scenario: Input "Привет" (RU), Primary "ru", Secondary "en".
-        # 1. translate("Привет") to "ru" -> returns "Привет" (mocked)
-        # 2. Detected source is primary. Target becomes "en".
-        # 3. translate("Привет") to "en" -> returns "Hello" (mocked)
+        # Heuristic sees "Привет" has Cyrillic -> is_source_primary = True.
+        # Target = "en".
+        # translate("Привет") to "en" -> returns "Hello".
 
-        # We use side_effect to return different values for sequential calls if needed,
-        # but here the logic creates NEW instances.
-        # Since we mock the class, return_value is the SAME mock instance for all creations by default.
-        # We need to handle the calls.
-
-        def translate_side_effect(text):
-            if text == "Привет":
-                # If we are translating "Привет", what is the target?
-                # The mock doesn't easily expose the constructor args of the instance calling this.
-                # However, the logic is:
-                # First call: target=primary ("ru"). returns "Привет".
-                # Second call: target=secondary ("en"). returns "Hello".
-                pass
-            return "DEFAULT"
-
-        # A cleaner way given the logic:
-        # First call returns "Привет".
-        # Second call returns "Hello".
-        mock_instance.translate.side_effect = ["Привет", "Hello"]
+        mock_instance.translate.return_value = "Hello"
 
         result = self.service._translate_sync(
             "Привет", primary_lang="ru", secondary_lang="en"
@@ -105,10 +87,64 @@ class TestTranslatorService(unittest.TestCase):
         self.assertEqual(result, "Hello")
 
         # Verify calls
-        # 1. Init with target='ru'
+        # Should NOT init with target='ru' (skipped check)
+        # Should init with target='en'
+        self.MockGoogleTranslator.assert_called_with(source="auto", target="en")
+
+    def test_translate_sync_fallback_no_heuristic(self):
+        """
+        Test fallback logic when heuristic doesn't apply (e.g. latin chars for RU primary).
+        """
+        mock_instance = self.MockGoogleTranslator.return_value
+
+        # Scenario: Input "Hello" (EN). Primary "ru".
+        # Heuristic: False.
+        # Check: translate("Hello", target="ru") -> "Привет".
+        # "Привет" != "Hello". is_source_primary = False.
+        # Target = "ru".
+        # Optimization catches it and returns "Привет".
+
+        mock_instance.translate.return_value = "Привет"
+
+        result = self.service._translate_sync(
+            "Hello", primary_lang="ru", secondary_lang="en"
+        )
+        self.assertEqual(result, "Привет")
+        # Should have checked 'ru'
         self.MockGoogleTranslator.assert_any_call(source="auto", target="ru")
-        # 2. Init with target='en'
-        self.MockGoogleTranslator.assert_any_call(source="auto", target="en")
+
+    def test_dictionary_bug_regression(self):
+        """
+        Test that dictionary substitution doesn't break direction detection.
+        Regression for task-015: "Апдейт" -> "update" -> "обновлять" (wrong).
+        Should remain "update".
+        """
+        mock_instance = self.MockGoogleTranslator.return_value
+
+        # Scenario:
+        # User input: "Апдейт" (RU).
+        # Dictionary changed it to: "update".
+        # _translate_sync called with text="update", original_text="Апдейт".
+
+        # Heuristic: "Апдейт" has Cyrillic. Primary="ru".
+        # is_source_primary = True.
+        # Target = "en".
+
+        # Translation call: "update" -> "en" -> "update".
+
+        mock_instance.translate.return_value = "update"
+
+        result = self.service._translate_sync(
+            text="update",
+            primary_lang="ru",
+            secondary_lang="en",
+            original_text="Апдейт",
+        )
+
+        self.assertEqual(result, "update")
+
+        # Verify it translated to EN, not RU
+        self.MockGoogleTranslator.assert_called_with(source="auto", target="en")
 
     def test_translate_sync_optimization(self):
         """

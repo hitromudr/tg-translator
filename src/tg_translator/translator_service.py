@@ -84,17 +84,28 @@ class TranslatorService:
             # Determine direction based on original text (to handle dictionary substitutions)
             sample_text = original_text if original_text else text
 
-            # Strategy:
-            # 1. Try translating sample to Primary.
-            # 2. If it changes, Source is likely Secondary (or Third). Target -> Primary.
-            # 3. If it stays same, Source is likely Primary. Target -> Secondary.
+            # Heuristic: If primary lang implies Cyrillic, and text has Cyrillic -> Source IS Primary.
+            # This avoids API call and fixes the dictionary bug.
+            cyrillic_langs = {"ru", "uk", "be", "sr", "bg", "mk", "kk", "ky", "tg"}
+            is_source_primary = None
 
-            to_primary = GoogleTranslator(source="auto", target=primary_lang)
-            res_prim = cast(str, to_primary.translate(sample_text))
-
-            is_source_primary = False
-            if res_prim and res_prim.lower().strip() == sample_text.lower().strip():
+            if primary_lang in cyrillic_langs and bool(
+                re.search(r"[а-яА-ЯёЁ]", sample_text)
+            ):
                 is_source_primary = True
+
+            if is_source_primary is None:
+                # Strategy:
+                # 1. Try translating sample to Primary.
+                # 2. If it changes, Source is likely Secondary (or Third). Target -> Primary.
+                # 3. If it stays same, Source is likely Primary. Target -> Secondary.
+
+                to_primary = GoogleTranslator(source="auto", target=primary_lang)
+                res_prim = cast(str, to_primary.translate(sample_text))
+
+                is_source_primary = False
+                if res_prim and res_prim.lower().strip() == sample_text.lower().strip():
+                    is_source_primary = True
 
             target_lang = secondary_lang if is_source_primary else primary_lang
 
