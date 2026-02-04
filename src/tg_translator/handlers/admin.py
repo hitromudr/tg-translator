@@ -1,3 +1,4 @@
+import io
 import logging
 import os
 
@@ -105,6 +106,7 @@ async def voice_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     Manage voice settings.
     Usage:
     /voice [male|female] - Quick toggle
+    /voice list [lang] - List speakers
     /voice test <lang> <speaker> - Preview
     /voice set <lang> <gender> <speaker> - Set preset
     /voice reset - Clear presets
@@ -138,6 +140,7 @@ async def voice_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
             "<i>(Try en_0, en_1, en_2, en_10, en_45, en_99)</i>\n\n"
             "<b>Usage:</b>\n"
             "• <code>/voice male</code> or <code>female</code> - Switch global preference.\n"
+            "• <code>/voice list [lang]</code> - List available speakers.\n"
             "• <code>/voice test en en_45</code> - Test a speaker.\n"
             "• <code>/voice set en male en_45</code> - Assign speaker to lang/gender.\n"
             "• <code>/voice reset</code> - Clear all custom presets."
@@ -217,9 +220,68 @@ async def voice_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         else:
             await update.message.reply_text("Failed to clear presets.")
 
+    elif subcommand == "list":
+        # /voice list [lang]
+        speakers_db = {
+            "ru": [
+                ("aidar", "Male"),
+                ("baya", "Female"),
+                ("kseniya", "Female"),
+                ("xenia", "Female"),
+                ("eugene", "Male"),
+                ("random", "Random"),
+            ],
+            "ua": [("mykyta", "Male")],
+            "uk": [("mykyta", "Male")],
+            "de": [("thorsten", "Male")],
+            "es": [("es_0", "Male")],
+            "fr": [
+                ("fr_0", "Male"),
+                ("fr_1", "Female"),
+                ("fr_2", "Male"),
+                ("fr_3", "Male"),
+                ("fr_4", "Male"),
+                ("fr_5", "Female"),
+            ],
+        }
+
+        target_lang = args[1].lower() if len(args) > 1 else None
+
+        if target_lang:
+            lines = []
+            if target_lang == "en":
+                lines.append(
+                    "Note: English v3 model has 118 speakers (en_0 - en_117). Gender is not strictly defined."
+                )
+                lines.extend([f"en_{i}" for i in range(118)])
+            elif target_lang in speakers_db:
+                lines = [
+                    f"{name} ({gender})" for name, gender in speakers_db[target_lang]
+                ]
+            else:
+                await update.message.reply_text(
+                    "Unknown language or no TTS support for this language in Silero presets."
+                )
+                return
+
+            text = f"Speakers for {target_lang.upper()}:\n\n" + "\n".join(lines)
+            file = io.BytesIO(text.encode("utf-8"))
+            file.name = f"speakers_{target_lang}.txt"
+            await update.message.reply_document(
+                document=file, caption=f"Speakers list for {target_lang}"
+            )
+
+        else:
+            # Show summary
+            msg = "<b>Supported TTS Languages:</b>\n"
+            for code in ["ru", "ua", "en", "de", "es", "fr"]:
+                msg += f"• {code.upper()}\n"
+            msg += "\nUse <code>/voice list en</code> (or other lang) to get full list file."
+            await update.message.reply_text(msg, parse_mode=ParseMode.HTML)
+
     else:
         await update.message.reply_text(
-            "Unknown command. Use: male, female, test, set, reset."
+            "Unknown command. Use: male, female, list, test, set, reset."
         )
 
 
