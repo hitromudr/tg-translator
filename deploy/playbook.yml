@@ -74,7 +74,8 @@
         content: |
           [Unit]
           Description=Telegram Translator Bot
-          After=network.target
+          After=network.target tg-bot-proxy.service
+          Wants=tg-bot-proxy.service
 
           [Service]
           Type=simple
