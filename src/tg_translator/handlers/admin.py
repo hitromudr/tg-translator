@@ -131,6 +131,11 @@ async def voice_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         current_gender = db.get_voice_gender(chat_id)
         msg = f"Current global gender: <b>{current_gender}</b>\n\n"
         msg += (
+            "<b>Available Speakers:</b>\n"
+            "🇷🇺 <b>RU:</b> aidar, kseniya, baya, xenia, eugene, random\n"
+            "🇺🇦 <b>UA:</b> mykyta\n"
+            "🇺🇸 <b>EN:</b> en_0 ... en_117\n"
+            "<i>(Try en_0, en_1, en_2, en_10, en_45, en_99)</i>\n\n"
             "<b>Usage:</b>\n"
             "• <code>/voice male</code> or <code>female</code> - Switch global preference.\n"
             "• <code>/voice test en en_45</code> - Test a speaker.\n"
