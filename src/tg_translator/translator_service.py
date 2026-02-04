@@ -353,8 +353,11 @@ class TranslatorService:
                     else:
                         speaker = "en_2"  # Distinct male voice
                 elif lang_code == "de":
-                    # v3_de supports: thorsten (male)
-                    speaker = "thorsten"
+                    # v3_de supports: friedrich (male), eva_k (female)
+                    if gender == "female":
+                        speaker = "eva_k"
+                    else:
+                        speaker = "friedrich"
                 elif lang_code == "es":
                     # v3_es supports: es_0 (male)
                     speaker = "es_0"

@@ -39,7 +39,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
         keyboard = [[InlineKeyboardButton(label, callback_data="translate_this")]]
         reply_markup = InlineKeyboardMarkup(keyboard)
-        await update.message.reply_text("...", reply_markup=reply_markup)
+        sent_msg = await update.message.reply_text("...", reply_markup=reply_markup)
+
+        # Save text to DB so callback can retrieve it even if original is deleted/inaccessible
+        key = f"{update.effective_chat.id}:{sent_msg.message_id}"
+        db.add_transcription(key, original_text)
         return
 
     user = update.message.from_user

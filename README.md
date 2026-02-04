@@ -10,13 +10,15 @@ A powerful, self-hosted Telegram bot for seamless multilingual communication in 
 ## 🚀 Features
 
 ### 💬 Translation
+*   **Smart Translation (LLM)**: Uses **Llama 3** (via Groq) for context-aware translation that preserves slang, style, and tone. Falls back to Google Translate if unavailable.
 *   **Automatic Translation**: Instantly translates text messages between configured languages (default: RU ↔ EN).
 *   **Smart Dictionary**: Supports custom term replacements (e.g., specific names or slang) with automatic case handling.
 *   **Auto-Detection**: Intelligently detects source language, even when mixed with dictionary substitutions.
 
 ### 🎙 Voice (Speech-to-Text)
-*   **Whisper AI**: Uses OpenAI's **Whisper (Small)** model running locally for high-accuracy recognition of accents, fast speech, and mixed languages.
-*   **Privacy-First**: Audio is processed on your server, never sent to third-party clouds.
+*   **Whisper V3 (Groq)**: Uses **Whisper Large V3** via Groq API for ultra-fast and accurate recognition of accents and mumbled speech.
+*   **Local Fallback**: Automatically switches to local **Whisper (Small)** if the cloud API is unreachable.
+*   **Privacy-First**: Audio is processed on your server (local mode) or via secure tunnel (Groq mode).
 
 ### 🔊 Voice (Text-to-Speech)
 *   **Silero TTS**: High-quality neural speech synthesis for **Russian, English, Ukrainian, German, Spanish, French**.
@@ -68,12 +70,14 @@ The bot is designed to run on a standard VPS (e.g., 4 vCPU, 8GB RAM).
 
 *   **Core**: Python 3.10+, `python-telegram-bot`.
 *   **Database**: SQLite (with automatic migrations).
-*   **STT Engine**: `faster-whisper` (optimized for CPU).
+*   **LLM/STT Cloud**: **Groq API** (Llama 3.3 / Whisper V3) for high performance.
+*   **STT Local**: `faster-whisper` (fallback, optimized for CPU).
 *   **TTS Engine**: `silero-tts` (via `torch` + `soundfile`).
-*   **Translation**: Google Translate (via `deep-translator`).
+*   **Translation Fallback**: Google Translate (via `deep-translator`).
 
 ### Performance Limits
-*   **Whisper**: Configured to use `int8` quantization and limited to 2 CPU threads to coexist safely with other high-load services (like LiveKit).
+*   **Groq Integration**: Offloads heavy inference to the cloud, saving ~1.5 GB RAM when active.
+*   **Local Whisper**: Configured to use `int8` quantization and limited to 2 CPU threads (only loads on fallback).
 *   **Silero**: Lazy-loaded into RAM only when needed.
 
 ---
@@ -97,6 +101,8 @@ The bot is designed to run on a standard VPS (e.g., 4 vCPU, 8GB RAM).
     ```bash
     cp .env.example .env
     # Edit .env and add your TELEGRAM_BOT_TOKEN
+    # Optional: Add GROQ_API_KEY for Smart features
+    # Optional: Add HTTPS_PROXY for restricted regions
     ```
 
 3.  **Install dependencies:**

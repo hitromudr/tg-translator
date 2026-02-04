@@ -240,6 +240,27 @@ class TestTranslatorService(unittest.TestCase):
         self.assertIn("tmp/tts_silero_", path)
         self.assertTrue(path.endswith(".mp3"))
 
+    @patch("tg_translator.translator_service.torch")
+    @patch("tg_translator.translator_service.sf")
+    @patch("tg_translator.translator_service.AudioSegment")
+    def test_generate_audio_silero_de(self, MockAudioSegment, MockSF, MockTorch):
+        """Test Silero TTS generation for German (updated v3 speakers)."""
+        mock_model = MagicMock()
+        mock_model.apply_tts.return_value = MagicMock()
+        mock_model.apply_tts.return_value.numpy.return_value = MagicMock()
+        MockTorch.hub.load.return_value = (mock_model, "example")
+        MockTorch.device.return_value = "cpu"
+
+        # Act - Male (friedrich)
+        self.service._generate_audio_sync("Hallo", "de", "male")
+        _, kwargs = mock_model.apply_tts.call_args
+        self.assertEqual(kwargs["speaker"], "friedrich")
+
+        # Act - Female (eva_k)
+        self.service._generate_audio_sync("Hallo", "de", "female")
+        _, kwargs = mock_model.apply_tts.call_args
+        self.assertEqual(kwargs["speaker"], "eva_k")
+
     @patch("tg_translator.translator_service.gTTS")
     def test_generate_audio_fallback(self, MockGTTS):
         """Test fallback to gTTS for unsupported languages."""
