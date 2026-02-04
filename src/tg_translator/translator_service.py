@@ -4,11 +4,14 @@ import os
 import re
 import uuid
 from concurrent.futures import ThreadPoolExecutor
-from typing import Optional, cast
+from typing import Any, Dict, Optional, cast
 
+import torch  # type: ignore
+import torchaudio  # type: ignore
 from deep_translator import GoogleTranslator  # type: ignore
 from faster_whisper import WhisperModel  # type: ignore
 from gtts import gTTS  # type: ignore
+from pydub import AudioSegment  # type: ignore
 
 from .db import Database
 
@@ -21,6 +24,8 @@ class TranslatorService:
         # Executor for running synchronous translation in async context
         self._executor = ThreadPoolExecutor(max_workers=4)
         self.whisper_model: Optional[WhisperModel] = None
+        # Cache for Silero TTS models: {model_id: model_object}
+        self.silero_models: Dict[str, Any] = {}
 
     def get_supported_languages(self) -> dict[str, str]:
         """Return a dictionary of supported languages (name -> code)."""
@@ -179,20 +184,103 @@ class TranslatorService:
             text,  # original_text
         )
 
-    def _generate_audio_sync(self, text: str, lang: str) -> Optional[str]:
+    def _generate_audio_silero_sync(self, text: str, lang: str) -> Optional[str]:
         """
-        Synchronous audio generation using gTTS.
+        Generate audio using Silero TTS (high quality).
+        Returns path to generated file or None if lang not supported/error.
         """
         try:
-            # Generate a unique filename
-            filename = f"tmp/tts_{uuid.uuid4()}.mp3"
+            # Map lang to Silero model params
+            # We use snakers4/silero-models repository logic
+            lang_code = lang.lower()
+            speaker = None
+            model_id = None
+
+            if lang_code == "ru":
+                # v4_ru supports: aidar, baya, kseniya, xenia, eugene, random
+                model_id = "v4_ru"
+                speaker = "kseniya"
+            elif lang_code in ["uk", "ua"]:
+                # v4_ua supports: mykyta
+                lang_code = "ua"  # Silero uses 'ua' code
+                model_id = "v4_ua"
+                speaker = "mykyta"
+            elif lang_code == "en":
+                # v3_en supports: en_0 .. en_117
+                model_id = "v3_en"
+                speaker = "en_0"  # Neutral male
+            else:
+                # Language not supported by our Silero config, fallback to gTTS
+                return None
+
+            device = torch.device("cpu")
+
+            # Lazy load model
+            if model_id not in self.silero_models:
+                logger.info(f"Loading Silero TTS model: {model_id} ({lang_code})")
+                model, _ = torch.hub.load(
+                    repo_or_dir="snakers4/silero-models",
+                    model="silero_tts",
+                    language=lang_code,
+                    speaker=model_id,
+                )
+                model.to(device)
+                self.silero_models[model_id] = model
+
+            model = self.silero_models[model_id]
+
+            # Generate audio (Tensor)
+            # sample_rate 48000 is standard for v4 models
+            sample_rate = 48000
+            audio = model.apply_tts(
+                text=text,
+                speaker=speaker,
+                sample_rate=sample_rate,
+                put_accent=True,
+                put_yo=True,
+            )
+
+            # Save to temporary WAV file
+            os.makedirs("tmp", exist_ok=True)
+            wav_filename = f"tmp/tts_silero_{uuid.uuid4()}.wav"
+
+            # Audio is 1D tensor [samples]. Save expects [channels, samples]
+            torchaudio.save(wav_filename, audio.unsqueeze(0), sample_rate)
+
+            # Convert to MP3 using pydub for compatibility/size
+            mp3_filename = wav_filename.replace(".wav", ".mp3")
+            AudioSegment.from_wav(wav_filename).export(mp3_filename, format="mp3")
+
+            # Cleanup WAV
+            if os.path.exists(wav_filename):
+                os.remove(wav_filename)
+
+            return mp3_filename
+
+        except Exception as e:
+            logger.error(f"Silero TTS error for {lang}: {e}")
+            return None
+
+    def _generate_audio_sync(self, text: str, lang: str) -> Optional[str]:
+        """
+        Synchronous audio generation.
+        Tries Silero TTS first, falls back to gTTS.
+        """
+        # Try Silero first
+        silero_path = self._generate_audio_silero_sync(text, lang)
+        if silero_path:
+            return silero_path
+
+        # Fallback to gTTS
+        try:
+            filename = f"tmp/tts_gtts_{uuid.uuid4()}.mp3"
             os.makedirs("tmp", exist_ok=True)
 
             tts = gTTS(text=text, lang=lang)
             tts.save(filename)
             return filename
         except Exception as e:
-            logger.error(f"TTS generation error: {e}")
+            logger.error(f"gTTS generation error: {e}")
             return None
 
     async def generate_audio(self, text: str, lang: str) -> Optional[str]:
