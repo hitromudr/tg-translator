@@ -187,7 +187,7 @@ class TestTranslatorService(unittest.TestCase):
         self.assertEqual(res, "Test Transcription")
         # Verify initialization params (CPU limits for SAX compatibility)
         MockWhisperModel.assert_called_with(
-            "base", device="cpu", compute_type="int8", cpu_threads=2
+            "small", device="cpu", compute_type="int8", cpu_threads=2
         )
         # Verify transcription call
         mock_model.transcribe.assert_called_with("dummy.ogg", beam_size=5)

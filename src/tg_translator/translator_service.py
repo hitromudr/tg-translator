@@ -212,9 +212,9 @@ class TranslatorService:
         cpu_threads=2 ensures we don't starve other processes.
         """
         if self.whisper_model is None:
-            logger.info("Loading Whisper model (base, int8)...")
+            logger.info("Loading Whisper model (small, int8)...")
             self.whisper_model = WhisperModel(
-                "base", device="cpu", compute_type="int8", cpu_threads=2
+                "small", device="cpu", compute_type="int8", cpu_threads=2
             )
         return self.whisper_model
 
