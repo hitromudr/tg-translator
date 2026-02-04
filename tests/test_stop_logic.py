@@ -73,6 +73,7 @@ async def test_interactive_mode_sends_button():
     context = MagicMock()
     mock_db = MagicMock()
     mock_db.get_mode.return_value = "interactive"
+    mock_db.get_languages.return_value = ("ru", "en")
 
     mock_service = AsyncMock()
     context.bot_data = {"db": mock_db, "translator_service": mock_service}
@@ -94,7 +95,10 @@ async def test_interactive_mode_sends_button():
 
     # Verify the button callback data
     keyboard = kwargs["reply_markup"].inline_keyboard
-    assert keyboard[0][0].callback_data == "translate_this"
+    button = keyboard[0][0]
+    assert button.callback_data == "translate_this"
+    # "Hello world" -> No Cyrillic -> Target is RU (l1)
+    assert button.text == "🌐 to RU"
 
 
 @pytest.mark.asyncio

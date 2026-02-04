@@ -31,9 +31,13 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         return
 
     if mode == "interactive":
-        keyboard = [
-            [InlineKeyboardButton("🌐 Translate", callback_data="translate_this")]
-        ]
+        l1, l2 = db.get_languages(update.effective_chat.id)
+        # Heuristic: if Cyrillic is present, assume source is l1 (e.g. RU) -> target is l2 (EN)
+        has_cyrillic = bool(re.search(r"[а-яА-ЯёЁ]", original_text))
+        target_lang = l2 if has_cyrillic else l1
+        label = f"🌐 to {target_lang.upper()}"
+
+        keyboard = [[InlineKeyboardButton(label, callback_data="translate_this")]]
         reply_markup = InlineKeyboardMarkup(keyboard)
         await update.message.reply_text("...", reply_markup=reply_markup)
         return
@@ -107,14 +111,16 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
             logger.info(f"Transcribed text: {transcription[:50]}...")
 
             if mode == "interactive":
+                l1, l2 = db.get_languages(update.effective_chat.id)
+                label = f"🌐 {l1.upper()}/{l2.upper()}"
+
+                # Voice case: Two buttons
                 keyboard = [
                     [
                         InlineKeyboardButton(
                             "📝 Text", callback_data="transcribe_this"
                         ),
-                        InlineKeyboardButton(
-                            "🌐 Transl.", callback_data="translate_this"
-                        ),
+                        InlineKeyboardButton(label, callback_data="translate_this"),
                     ]
                 ]
                 reply_markup = InlineKeyboardMarkup(keyboard)
