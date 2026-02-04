@@ -26,17 +26,37 @@ async def translate_callback(
         return
 
     text_to_translate = ""
+    transcription_text = ""
     is_voice = False
 
-    # Check if this is a voice transcription message
-    # We used "🎤 <i>transcription</i>" format in handle_voice
+    # Access dependencies
+    db = context.bot_data["db"]
+    translator_service = context.bot_data["translator_service"]
+
+    # Check if this is a voice transcription message placeholder
     if bot_message.text and "🎤" in bot_message.text:
         is_voice = True
-        # Extract text, removing the microphone icon.
-        # Note: bot_message.text gives plain text, ignoring HTML tags.
-        text_to_translate = bot_message.text.replace("🎤", "").strip()
+
+        # Try to fetch transcription from DB (Lazy Load)
+        key = f"{bot_message.chat_id}:{bot_message.message_id}"
+        transcription_text = db.get_transcription(key)
+
+        if transcription_text:
+            text_to_translate = transcription_text
+        else:
+            # Fallback: Extract text from message if present (legacy support)
+            # Remove "Voice message" placeholder text if present
+            cleaned_text = (
+                bot_message.text.replace("🎤", "").replace("Voice message", "").strip()
+            )
+            if cleaned_text:
+                text_to_translate = cleaned_text
+                transcription_text = cleaned_text
+            else:
+                await bot_message.edit_text("❌ Transcription expired or not found.")
+                return
     else:
-        # Standard text message case (placeholder "Translate?")
+        # Standard text message case (placeholder "Translate?", "📝", "🌐")
         original_message = bot_message.reply_to_message
         if not original_message or not original_message.text:
             await bot_message.edit_text("❌ Original message not found or has no text.")
@@ -44,7 +64,6 @@ async def translate_callback(
         text_to_translate = original_message.text
 
     # Perform translation
-    translator_service = context.bot_data["translator_service"]
     translation = await translator_service.translate_message(
         text_to_translate, bot_message.chat_id
     )
@@ -59,9 +78,10 @@ async def translate_callback(
 
     final_text = spoiler_text
     if is_voice:
-        # Keep the original transcription (using text_html to preserve existing formatting like italics)
-        # We append the translation below it.
-        final_text = f"{bot_message.text_html}\n{spoiler_text}"
+        # Show transcription AND translation
+        # Since we fetched raw text from DB, we need to escape it for HTML
+        safe_transcription = html.escape(transcription_text)
+        final_text = f"🎤 <i>{safe_transcription}</i>\n{spoiler_text}"
 
     # Add Speak button for the translated text
     keyboard = [[InlineKeyboardButton("🔊 Speak", callback_data="speak")]]
@@ -74,7 +94,11 @@ async def translate_callback(
     except Exception as e:
         logger.error(f"Error editing message with translation: {e}")
         # In case of formatting error, fallback to plain text
+        # Use transcribed text for fallback if available, otherwise message text (placeholder)
+        source_text = (
+            transcription_text if is_voice and transcription_text else bot_message.text
+        )
         await bot_message.edit_text(
-            f"{bot_message.text}\n\nTranslation: {translation}",
+            f"{source_text}\n\nTranslation: {translation}",
             reply_markup=reply_markup,
         )

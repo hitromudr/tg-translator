@@ -35,7 +35,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             [InlineKeyboardButton("Translate ⬇️", callback_data="translate_this")]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
-        await update.message.reply_text("Translate?", reply_markup=reply_markup)
+        await update.message.reply_text("🌐", reply_markup=reply_markup)
         return
 
     user = update.message.from_user
@@ -115,12 +115,20 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
                     ]
                 ]
                 reply_markup = InlineKeyboardMarkup(keyboard)
-                await update.message.reply_text(
-                    f"🎤 <i>{html.escape(transcription)}</i>",
-                    parse_mode=ParseMode.HTML,
+
+                # Send placeholder
+                sent_msg = await update.message.reply_text(
+                    "🎤",
                     reply_markup=reply_markup,
                 )
-                logger.info("Sent transcription for voice message (interactive).")
+
+                # Store transcription in DB linked to this message ID
+                key = f"{update.effective_chat.id}:{sent_msg.message_id}"
+                db.add_transcription(key, transcription)
+
+                logger.info(
+                    "Sent transcription placeholder for voice message (interactive)."
+                )
                 return
 
             translation = await translator_service.translate_message(

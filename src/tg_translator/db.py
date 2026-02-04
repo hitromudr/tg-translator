@@ -52,7 +52,16 @@ class Database:
                     )
                     """)
 
-                # 3. Manage dictionary table (Migration logic)
+                # 3. Create transcriptions table (Temporary storage)
+                cursor.execute("""
+                    CREATE TABLE IF NOT EXISTS transcriptions (
+                        key TEXT PRIMARY KEY,
+                        text TEXT NOT NULL,
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    )
+                    """)
+
+                # 4. Manage dictionary table (Migration logic)
                 # Check if dictionary table exists
                 cursor.execute(
                     "SELECT name FROM sqlite_master WHERE type='table' AND name='dictionary'"
@@ -292,4 +301,44 @@ class Database:
                 return None
         except Exception as e:
             logger.error(f"Error fetching export: {e}")
+            return None
+
+    # --- Transcription Methods ---
+
+    def add_transcription(self, key: str, text: str) -> bool:
+        """Store transcription text temporarily."""
+        try:
+            with self._get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    """
+                    INSERT OR REPLACE INTO transcriptions (key, text)
+                    VALUES (?, ?)
+                    """,
+                    (key, text),
+                )
+                conn.commit()
+            return True
+        except Exception as e:
+            logger.error(f"Error storing transcription: {e}")
+            return False
+
+    def get_transcription(self, key: str) -> Optional[str]:
+        """Retrieve transcription by key."""
+        try:
+            with self._get_connection() as conn:
+                cursor = conn.cursor()
+                # Cleanup old transcriptions (older than 24h)
+                cursor.execute(
+                    "DELETE FROM transcriptions WHERE created_at < datetime('now', '-1 day')"
+                )
+                conn.commit()
+
+                cursor.execute("SELECT text FROM transcriptions WHERE key = ?", (key,))
+                row = cursor.fetchone()
+                if row:
+                    return cast(str, row[0])
+                return None
+        except Exception as e:
+            logger.error(f"Error fetching transcription: {e}")
             return None
