@@ -9,6 +9,7 @@ from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
+from tg_translator.db import Database
 from tg_translator.translator_service import TranslatorService
 
 # Setup logging
@@ -27,9 +28,10 @@ app = FastAPI(
     version="1.0.0",
 )
 
-# Initialize Service (Singleton)
-# We pass db=None because API clients provide source/target/gender explicitly
-service = TranslatorService(db=None)
+# Initialize Database and Service
+# We use the same DB as the bot to share dictionaries
+db = Database()
+service = TranslatorService(db=db)
 
 
 # --- Data Models ---
@@ -37,12 +39,28 @@ class TranslateRequest(BaseModel):
     text: str
     source_lang: str = "auto"
     target_lang: str = "en"
+    chat_id: Optional[str] = None  # Optional context for dictionary
 
 
 class TTSRequest(BaseModel):
     text: str
     lang: str
     gender: str = "male"  # male/female
+
+
+class DictAddRequest(BaseModel):
+    chat_id: str
+    source: str
+    target: str
+    source_lang: str = "ru"
+    target_lang: str = "en"
+
+
+class DictRemoveRequest(BaseModel):
+    chat_id: str
+    source: str
+    source_lang: str = "ru"
+    target_lang: str = "en"
 
 
 # --- Endpoints ---
@@ -67,14 +85,22 @@ async def translate_text(req: TranslateRequest):
         loop = asyncio.get_running_loop()
 
         # Logic from TranslatorService._translate_sync but we call it directly via executor
-        # We assume Groq is configured in service
+        # If chat_id provided, apply dictionary first
+        text_to_process = req.text
+        if req.chat_id:
+            langs = sorted([req.source_lang, req.target_lang])
+            lang_pair = f"{langs[0]}-{langs[1]}"
+            text_to_process = service._apply_custom_dictionary(
+                req.text, req.chat_id, lang_pair
+            )  # type: ignore (db.py now supports str chat_id)
+
         result = await loop.run_in_executor(
             service._executor,
             service._translate_sync,
-            req.text,
+            text_to_process,
             req.source_lang,  # Treating as 'primary' for heuristic checks
             req.target_lang,  # Treating as 'secondary'
-            req.text,  # original_text
+            req.text,  # original_text (for heuristic detection)
         )
 
         if not result:
@@ -168,3 +194,46 @@ def remove_file(path: str):
         os.remove(path)
     except Exception:
         pass
+
+
+@app.post("/dict/add")
+async def add_term(req: DictAddRequest):
+    """Add a term to the custom dictionary."""
+    langs = sorted([req.source_lang, req.target_lang])
+    lang_pair = f"{langs[0]}-{langs[1]}"
+
+    # Use HeuristicInflector if available, or just add directly
+    from tg_translator.inflector import HeuristicInflector
+
+    variations = HeuristicInflector.get_variations(req.source)
+    if not variations:
+        variations = {req.source}
+
+    count = 0
+    for variant in variations:
+        if db.add_term(req.chat_id, variant, req.target, lang_pair):
+            count += 1
+
+    return {"status": "ok", "added_count": count}
+
+
+@app.post("/dict/remove")
+async def remove_term(req: DictRemoveRequest):
+    """Remove a term from the custom dictionary."""
+    langs = sorted([req.source_lang, req.target_lang])
+    lang_pair = f"{langs[0]}-{langs[1]}"
+
+    if db.remove_term(req.chat_id, req.source, lang_pair):
+        return {"status": "ok"}
+    else:
+        raise HTTPException(status_code=404, detail="Term not found")
+
+
+@app.get("/dict/list/{chat_id}")
+async def list_terms(chat_id: str, source_lang: str = "ru", target_lang: str = "en"):
+    """List terms for a chat and language pair."""
+    langs = sorted([source_lang, target_lang])
+    lang_pair = f"{langs[0]}-{langs[1]}"
+
+    terms = db.get_terms(chat_id, lang_pair)
+    return {"terms": terms}

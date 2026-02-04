@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 from fastapi.testclient import TestClient
 
-from tg_translator.api import app, service
+from tg_translator.api import app, db, service
 
 # Initialize Test Client
 client = TestClient(app)
@@ -12,12 +12,24 @@ client = TestClient(app)
 
 class TestRoyAPI:
     def setup_method(self):
+        # Mock DB methods to avoid SQLite access
+        self.mock_db_add = MagicMock(return_value=True)
+        self.mock_db_remove = MagicMock(return_value=True)
+        self.mock_db_get = MagicMock(return_value=[("foo", "bar")])
+
+        db.add_term = self.mock_db_add
+        db.remove_term = self.mock_db_remove
+        db.get_terms = self.mock_db_get
+
         # Reset service mocks before each test
         # We use the REAL executor, but mock the methods it calls.
         # This allows loop.run_in_executor to work correctly with async tests.
 
         # Mock internal methods to avoid real API calls
         service._translate_sync = MagicMock()
+        service._apply_custom_dictionary = MagicMock(
+            side_effect=lambda t, c, l: t.replace("foo", "bar")
+        )
         service.transcribe_audio = AsyncMock()
         service.generate_audio = AsyncMock()
 
@@ -61,6 +73,27 @@ class TestRoyAPI:
         assert data["translation"] == "Translated Text"
         assert data["source"] == "en"
         assert data["target"] == "ru"
+
+    def test_translate_with_dict(self):
+        """Test translation with dictionary application."""
+        service._translate_sync.return_value = "Translated Bar"
+
+        response = client.post(
+            "/translate",
+            json={
+                "text": "Hello foo",
+                "source_lang": "en",
+                "target_lang": "ru",
+                "chat_id": "roy_123",
+            },
+        )
+
+        assert response.status_code == 200
+        # Check that _apply_custom_dictionary was called
+        service._apply_custom_dictionary.assert_called()
+        # _translate_sync should be called with modified text "Hello bar" (from side_effect)
+        args, _ = service._translate_sync.call_args
+        assert args[0] == "Hello bar"
 
     def test_translate_failure(self):
         """Test translation failure (empty result)."""
@@ -133,3 +166,27 @@ class TestRoyAPI:
 
         assert response.status_code == 500
         assert "TTS generation failed" in response.json()["detail"]
+
+    def test_dict_add(self):
+        """Test adding term to dictionary."""
+        response = client.post(
+            "/dict/add", json={"chat_id": "roy_1", "source": "test", "target": "тест"}
+        )
+        assert response.status_code == 200
+        assert response.json()["status"] == "ok"
+        self.mock_db_add.assert_called()
+
+    def test_dict_remove(self):
+        """Test removing term."""
+        response = client.post(
+            "/dict/remove", json={"chat_id": "roy_1", "source": "test"}
+        )
+        assert response.status_code == 200
+        self.mock_db_remove.assert_called()
+
+    def test_dict_list(self):
+        """Test listing terms."""
+        response = client.get("/dict/list/roy_1")
+        assert response.status_code == 200
+        assert response.json()["terms"] == [["foo", "bar"]]
+        self.mock_db_get.assert_called()

@@ -1,7 +1,7 @@
 import logging
 import sqlite3
 import uuid
-from typing import List, Optional, Tuple, cast
+from typing import List, Optional, Tuple, Union, cast
 
 logger = logging.getLogger(__name__)
 
@@ -27,7 +27,7 @@ class Database:
                 # 1. Create settings table for language pairs
                 cursor.execute("""
                     CREATE TABLE IF NOT EXISTS settings (
-                        chat_id INTEGER PRIMARY KEY,
+                        chat_id TEXT PRIMARY KEY,
                         primary_lang TEXT NOT NULL DEFAULT 'ru',
                         secondary_lang TEXT NOT NULL DEFAULT 'en',
                         mode TEXT NOT NULL DEFAULT 'auto',
@@ -37,7 +37,9 @@ class Database:
 
                 # Check for migration (add columns if missing)
                 cursor.execute("PRAGMA table_info(settings)")
-                columns = [info[1] for info in cursor.fetchall()]
+                columns_info = cursor.fetchall()
+                columns = [info[1] for info in columns_info]
+
                 if "mode" not in columns:
                     logger.info("Migrating settings: adding mode column...")
                     cursor.execute(
@@ -48,6 +50,28 @@ class Database:
                     cursor.execute(
                         "ALTER TABLE settings ADD COLUMN voice_gender TEXT NOT NULL DEFAULT 'male'"
                     )
+
+                # Migration: chat_id INTEGER -> TEXT
+                chat_id_type = next(
+                    (info[2] for info in columns_info if info[1] == "chat_id"), None
+                )
+                if chat_id_type == "INTEGER":
+                    logger.info("Migrating settings: changing chat_id to TEXT...")
+                    cursor.execute("ALTER TABLE settings RENAME TO settings_old")
+                    cursor.execute("""
+                        CREATE TABLE settings (
+                            chat_id TEXT PRIMARY KEY,
+                            primary_lang TEXT NOT NULL DEFAULT 'ru',
+                            secondary_lang TEXT NOT NULL DEFAULT 'en',
+                            mode TEXT NOT NULL DEFAULT 'auto',
+                            voice_gender TEXT NOT NULL DEFAULT 'male'
+                        )
+                    """)
+                    cursor.execute("""
+                        INSERT INTO settings (chat_id, primary_lang, secondary_lang, mode, voice_gender)
+                        SELECT chat_id, primary_lang, secondary_lang, mode, voice_gender FROM settings_old
+                    """)
+                    cursor.execute("DROP TABLE settings_old")
 
                 # 2. Create exports table for dictionary sharing
                 cursor.execute("""
@@ -70,13 +94,40 @@ class Database:
                 # 4. Create voice_presets table (Advanced Voice Control)
                 cursor.execute("""
                     CREATE TABLE IF NOT EXISTS voice_presets (
-                        chat_id INTEGER NOT NULL,
+                        chat_id TEXT NOT NULL,
                         lang_code TEXT NOT NULL,
                         gender TEXT NOT NULL,
                         speaker TEXT NOT NULL,
                         PRIMARY KEY (chat_id, lang_code, gender)
                     )
                     """)
+
+                # Migration: chat_id INTEGER -> TEXT
+                cursor.execute("PRAGMA table_info(voice_presets)")
+                vp_info = cursor.fetchall()
+                vp_chat_id_type = next(
+                    (info[2] for info in vp_info if info[1] == "chat_id"), None
+                )
+
+                if vp_chat_id_type == "INTEGER":
+                    logger.info("Migrating voice_presets: changing chat_id to TEXT...")
+                    cursor.execute(
+                        "ALTER TABLE voice_presets RENAME TO voice_presets_old"
+                    )
+                    cursor.execute("""
+                        CREATE TABLE voice_presets (
+                            chat_id TEXT NOT NULL,
+                            lang_code TEXT NOT NULL,
+                            gender TEXT NOT NULL,
+                            speaker TEXT NOT NULL,
+                            PRIMARY KEY (chat_id, lang_code, gender)
+                        )
+                    """)
+                    cursor.execute("""
+                        INSERT INTO voice_presets (chat_id, lang_code, gender, speaker)
+                        SELECT chat_id, lang_code, gender, speaker FROM voice_presets_old
+                    """)
+                    cursor.execute("DROP TABLE voice_presets_old")
 
                 # 5. Manage dictionary table (Migration logic)
                 # Check if dictionary table exists
@@ -87,7 +138,7 @@ class Database:
                     # Create new table
                     cursor.execute("""
                         CREATE TABLE dictionary (
-                            chat_id INTEGER NOT NULL,
+                            chat_id TEXT NOT NULL,
                             lang_pair TEXT NOT NULL DEFAULT 'ru-en',
                             source_term TEXT NOT NULL,
                             target_term TEXT NOT NULL,
@@ -97,16 +148,20 @@ class Database:
                 else:
                     # Table exists, check if migration needed (add lang_pair)
                     cursor.execute("PRAGMA table_info(dictionary)")
-                    columns = [info[1] for info in cursor.fetchall()]
+                    dict_info = cursor.fetchall()
+                    columns = [info[1] for info in dict_info]
+
+                    migrated = False
                     if "lang_pair" not in columns:
                         logger.info("Migrating dictionary: adding lang_pair column...")
+                        migrated = True
                         # SQLite requires recreation for primary key changes
                         cursor.execute(
                             "ALTER TABLE dictionary RENAME TO dictionary_old"
                         )
                         cursor.execute("""
                             CREATE TABLE dictionary (
-                                chat_id INTEGER NOT NULL,
+                                chat_id TEXT NOT NULL,
                                 lang_pair TEXT NOT NULL DEFAULT 'ru-en',
                                 source_term TEXT NOT NULL,
                                 target_term TEXT NOT NULL,
@@ -117,8 +172,36 @@ class Database:
                         cursor.execute("""
                             INSERT INTO dictionary (chat_id, lang_pair, source_term, target_term)
                             SELECT chat_id, 'ru-en', source_term, target_term FROM dictionary_old
-                            """)
+                        """)
                         cursor.execute("DROP TABLE dictionary_old")
+
+                    # Migration: chat_id INTEGER -> TEXT (if not already handled by lang_pair migration)
+                    if not migrated:
+                        dict_chat_id_type = next(
+                            (info[2] for info in dict_info if info[1] == "chat_id"),
+                            None,
+                        )
+                        if dict_chat_id_type == "INTEGER":
+                            logger.info(
+                                "Migrating dictionary: changing chat_id to TEXT..."
+                            )
+                            cursor.execute(
+                                "ALTER TABLE dictionary RENAME TO dictionary_old"
+                            )
+                            cursor.execute("""
+                                CREATE TABLE dictionary (
+                                    chat_id TEXT NOT NULL,
+                                    lang_pair TEXT NOT NULL DEFAULT 'ru-en',
+                                    source_term TEXT NOT NULL,
+                                    target_term TEXT NOT NULL,
+                                    PRIMARY KEY (chat_id, lang_pair, source_term)
+                                )
+                            """)
+                            cursor.execute("""
+                                INSERT INTO dictionary (chat_id, lang_pair, source_term, target_term)
+                                SELECT chat_id, lang_pair, source_term, target_term FROM dictionary_old
+                            """)
+                            cursor.execute("DROP TABLE dictionary_old")
 
                 conn.commit()
         except Exception as e:
@@ -155,7 +238,9 @@ class Database:
             logger.error(f"Error adding term: {e}")
             return False
 
-    def remove_term(self, chat_id: int, source: str, lang_pair: str = "ru-en") -> bool:
+    def remove_term(
+        self, chat_id: Union[int, str], source: str, lang_pair: str = "ru-en"
+    ) -> bool:
         """Remove a term from the dictionary for a specific language pair."""
         try:
             source_lower = source.strip().lower()
@@ -200,7 +285,9 @@ class Database:
 
     # --- Settings Methods ---
 
-    def set_languages(self, chat_id: int, primary: str, secondary: str) -> bool:
+    def set_languages(
+        self, chat_id: Union[int, str], primary: str, secondary: str
+    ) -> bool:
         """Set language pair for a chat."""
         try:
             with self._get_connection() as conn:
@@ -224,7 +311,7 @@ class Database:
             logger.error(f"Error setting languages: {e}")
             return False
 
-    def get_languages(self, chat_id: int) -> Tuple[str, str]:
+    def get_languages(self, chat_id: Union[int, str]) -> Tuple[str, str]:
         """Get language pair for a chat. Returns ('ru', 'en') by default."""
         try:
             with self._get_connection() as conn:
@@ -245,7 +332,7 @@ class Database:
             logger.error(f"Error fetching languages: {e}")
             return ("ru", "en")
 
-    def set_mode(self, chat_id: int, mode: str) -> bool:
+    def set_mode(self, chat_id: Union[int, str], mode: str) -> bool:
         """Set the operation mode for a chat (auto, manual, etc)."""
         try:
             with self._get_connection() as conn:
@@ -262,7 +349,7 @@ class Database:
             logger.error(f"Error setting mode: {e}")
             return False
 
-    def get_mode(self, chat_id: int) -> str:
+    def get_mode(self, chat_id: Union[int, str]) -> str:
         """Get the operation mode for a chat. Default: 'auto'."""
         try:
             with self._get_connection() as conn:
@@ -278,7 +365,7 @@ class Database:
             logger.error(f"Error getting mode: {e}")
             return "auto"
 
-    def set_voice_gender(self, chat_id: int, gender: str) -> bool:
+    def set_voice_gender(self, chat_id: Union[int, str], gender: str) -> bool:
         """Set voice gender for a chat (male/female)."""
         try:
             gender = gender.lower()
@@ -300,7 +387,7 @@ class Database:
             logger.error(f"Error setting voice gender: {e}")
             return False
 
-    def get_voice_gender(self, chat_id: int) -> str:
+    def get_voice_gender(self, chat_id: Union[int, str]) -> str:
         """Get voice gender for a chat. Default: 'male'."""
         try:
             with self._get_connection() as conn:
@@ -317,7 +404,7 @@ class Database:
             return "male"
 
     def set_voice_preset(
-        self, chat_id: int, lang_code: str, gender: str, speaker: str
+        self, chat_id: Union[int, str], lang_code: str, gender: str, speaker: str
     ) -> bool:
         """Set a specific speaker for a lang+gender combination in a chat."""
         try:
@@ -337,7 +424,7 @@ class Database:
             return False
 
     def get_voice_preset(
-        self, chat_id: int, lang_code: str, gender: str
+        self, chat_id: Union[int, str], lang_code: str, gender: str
     ) -> Optional[str]:
         """Get the preferred speaker if set."""
         try:
@@ -358,7 +445,7 @@ class Database:
             logger.error(f"Error getting voice preset: {e}")
             return None
 
-    def delete_voice_presets(self, chat_id: int) -> bool:
+    def delete_voice_presets(self, chat_id: Union[int, str]) -> bool:
         """Clear all presets for a chat."""
         try:
             with self._get_connection() as conn:
