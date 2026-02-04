@@ -1,95 +1,200 @@
 import unittest
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from tg_translator.translator_service import TranslatorService
 
 
 class TestTranslatorService(unittest.TestCase):
     def setUp(self):
+        self.service = TranslatorService()
+        # Patch GoogleTranslator at the module level where it is imported
         self.patcher = patch("tg_translator.translator_service.GoogleTranslator")
         self.MockGoogleTranslator = self.patcher.start()
 
     def tearDown(self):
         self.patcher.stop()
+        self.service.shutdown()
 
-    def test_is_cyrillic(self):
-        service = TranslatorService()
-        self.assertTrue(service._is_cyrillic("Привет"))
-        self.assertFalse(service._is_cyrillic("Hello"))
-        self.assertTrue(service._is_cyrillic("Mix Привет"))
-        self.assertFalse(service._is_cyrillic("123"))
-        service.shutdown()
+    def test_normalize_language_code(self):
+        # Setup mock for get_supported_languages used inside normalize_language_code
+        # It creates a new GoogleTranslator() instance and calls get_supported_languages
+        mock_gt_instance = self.MockGoogleTranslator.return_value
+        mock_gt_instance.get_supported_languages.return_value = {
+            "english": "en",
+            "russian": "ru",
+            "chinese (simplified)": "zh-CN",
+            "ukrainian": "uk",
+        }
 
-    def test_translate_sync_to_english(self):
-        service = TranslatorService()
-        # Manually inject mocks for the translators
-        mock_to_en = MagicMock()
-        mock_to_ru = MagicMock()
-        service._to_en = mock_to_en
-        service._to_ru = mock_to_ru
+        # Test valid codes
+        self.assertEqual(self.service.normalize_language_code("en"), "en")
+        self.assertEqual(self.service.normalize_language_code("EN"), "en")
 
-        mock_to_en.translate.return_value = "Hello"
+        # Test aliases
+        self.assertEqual(self.service.normalize_language_code("cn"), "zh-CN")
+        self.assertEqual(self.service.normalize_language_code("ua"), "uk")
 
-        # Test Cyrillic input -> Should trigger to_en
-        result = service._translate_sync("Привет")
-        self.assertEqual(result, "Hello")
-        mock_to_en.translate.assert_called_with("Привет")
-        mock_to_ru.translate.assert_not_called()
-        service.shutdown()
+        # Test names
+        self.assertEqual(self.service.normalize_language_code("English"), "en")
+        self.assertEqual(self.service.normalize_language_code("russian"), "ru")
 
-    def test_translate_sync_to_russian(self):
-        service = TranslatorService()
-        mock_to_en = MagicMock()
-        mock_to_ru = MagicMock()
-        service._to_en = mock_to_en
-        service._to_ru = mock_to_ru
+        # Test invalid
+        self.assertIsNone(self.service.normalize_language_code("invalid"))
+        self.assertIsNone(self.service.normalize_language_code(""))
 
-        mock_to_ru.translate.return_value = "Привет"
+    def test_translate_sync_direct_to_primary(self):
+        """
+        Test case where translation to primary language changes the text,
+        meaning the source was NOT primary.
+        """
+        mock_instance = self.MockGoogleTranslator.return_value
 
-        # Test Latin input -> Should trigger to_ru
-        result = service._translate_sync("Hello")
+        # Scenario: Input "Hello" (EN), Primary "ru".
+        # 1. translate("Hello") to "ru" -> returns "Привет"
+        # Since "Привет" != "Hello", it returns "Привет".
+
+        mock_instance.translate.return_value = "Привет"
+
+        result = self.service._translate_sync(
+            "Hello", primary_lang="ru", secondary_lang="en"
+        )
+
         self.assertEqual(result, "Привет")
-        mock_to_ru.translate.assert_called_with("Hello")
-        mock_to_en.translate.assert_not_called()
-        service.shutdown()
+
+        # Verify instantiation with target='ru'
+        # Note: GoogleTranslator is instantiated multiple times.
+        # We check if it was initialized with target='ru'
+        self.MockGoogleTranslator.assert_any_call(source="auto", target="ru")
+
+    def test_translate_sync_fallback_to_secondary(self):
+        """
+        Test case where translation to primary language returns same text,
+        implying source IS primary, so we translate to secondary.
+        """
+        mock_instance = self.MockGoogleTranslator.return_value
+
+        # Scenario: Input "Привет" (RU), Primary "ru", Secondary "en".
+        # 1. translate("Привет") to "ru" -> returns "Привет" (mocked)
+        # 2. Detected source is primary. Target becomes "en".
+        # 3. translate("Привет") to "en" -> returns "Hello" (mocked)
+
+        # We use side_effect to return different values for sequential calls if needed,
+        # but here the logic creates NEW instances.
+        # Since we mock the class, return_value is the SAME mock instance for all creations by default.
+        # We need to handle the calls.
+
+        def translate_side_effect(text):
+            if text == "Привет":
+                # If we are translating "Привет", what is the target?
+                # The mock doesn't easily expose the constructor args of the instance calling this.
+                # However, the logic is:
+                # First call: target=primary ("ru"). returns "Привет".
+                # Second call: target=secondary ("en"). returns "Hello".
+                pass
+            return "DEFAULT"
+
+        # A cleaner way given the logic:
+        # First call returns "Привет".
+        # Second call returns "Hello".
+        mock_instance.translate.side_effect = ["Привет", "Hello"]
+
+        result = self.service._translate_sync(
+            "Привет", primary_lang="ru", secondary_lang="en"
+        )
+
+        self.assertEqual(result, "Hello")
+
+        # Verify calls
+        # 1. Init with target='ru'
+        self.MockGoogleTranslator.assert_any_call(source="auto", target="ru")
+        # 2. Init with target='en'
+        self.MockGoogleTranslator.assert_any_call(source="auto", target="en")
+
+    def test_translate_sync_optimization(self):
+        """
+        Test optimization: if target is primary and text hasn't changed, return result.
+        """
+        mock_instance = self.MockGoogleTranslator.return_value
+        # 1. translate("Text") to "ru" -> "Translated"
+        # "Translated" != "Text" -> is_source_primary = False
+        # target_lang = "ru" (primary)
+        # Optimization: target_lang == primary AND text == sample_text -> return res_prim ("Translated")
+
+        mock_instance.translate.return_value = "Translated"
+
+        result = self.service._translate_sync(
+            "Text", primary_lang="ru", secondary_lang="en"
+        )
+        self.assertEqual(result, "Translated")
+
+        # Should only call translate once effectively (or at least logic flow uses the first result)
+        self.assertEqual(mock_instance.translate.call_count, 1)
 
     def test_translate_sync_error(self):
-        service = TranslatorService()
-        mock_to_ru = MagicMock()
-        service._to_ru = mock_to_ru
+        mock_instance = self.MockGoogleTranslator.return_value
+        mock_instance.translate.side_effect = Exception("API Error")
 
-        mock_to_ru.translate.side_effect = Exception("API Error")
-
-        result = service._translate_sync("Hello")
+        result = self.service._translate_sync("Hello")
         self.assertIsNone(result)
-        service.shutdown()
 
 
 class TestTranslatorServiceAsync(unittest.IsolatedAsyncioTestCase):
-    def setUp(self):
-        self.patcher = patch("tg_translator.translator_service.GoogleTranslator")
-        self.MockGoogleTranslator = self.patcher.start()
+    async def asyncSetUp(self):
+        self.service = TranslatorService()
+        # Mock the internal executor to run synchronously or mock _translate_sync directly
+        # For unit testing translate_message, it's better to mock _translate_sync
+        # to avoid spawning threads and mocking GoogleTranslator again.
+        self.service._translate_sync = MagicMock()  # type: ignore
 
-    def tearDown(self):
-        self.patcher.stop()
-
-    async def test_translate_message(self):
-        service = TranslatorService()
-
-        # Mock _translate_sync to isolate async logic
-        service._translate_sync = MagicMock(return_value="Translated")
-
-        result = await service.translate_message("Source")
-        self.assertEqual(result, "Translated")
-        service._translate_sync.assert_called_with("Source")
-
-        service.shutdown()
+    async def asyncTearDown(self):
+        self.service.shutdown()
 
     async def test_translate_message_empty(self):
-        service = TranslatorService()
-        result = await service.translate_message("")
+        result = await self.service.translate_message("")
         self.assertIsNone(result)
 
-        result = await service.translate_message("   ")
+        result = await self.service.translate_message("   ")
         self.assertIsNone(result)
-        service.shutdown()
+
+    async def test_translate_message_defaults(self):
+        """Test translation without DB (using defaults)"""
+        self.service._translate_sync.return_value = "Translated"
+
+        result = await self.service.translate_message("Source")
+
+        self.assertEqual(result, "Translated")
+        self.service._translate_sync.assert_called_with("Source", "ru", "en", "Source")
+
+    async def test_translate_message_with_db(self):
+        """Test translation with DB settings"""
+        mock_db = MagicMock()
+        mock_db.get_languages.return_value = ("es", "fr")
+        mock_db.get_terms.return_value = []  # No custom terms
+
+        self.service.db = mock_db
+        self.service._translate_sync.return_value = "Translated"
+
+        result = await self.service.translate_message("Source", chat_id=123)
+
+        self.assertEqual(result, "Translated")
+        mock_db.get_languages.assert_called_with(123)
+        self.service._translate_sync.assert_called_with("Source", "es", "fr", "Source")
+
+    async def test_translate_message_with_custom_dict(self):
+        """Test custom dictionary replacement before translation"""
+        mock_db = MagicMock()
+        mock_db.get_languages.return_value = ("ru", "en")
+        # Custom term: "foo" -> "bar"
+        mock_db.get_terms.return_value = [("foo", "bar")]
+
+        self.service.db = mock_db
+        self.service._translate_sync.return_value = "Translated"
+
+        # Input text contains "foo"
+        await self.service.translate_message("This is foo test", chat_id=123)
+
+        # Check that _translate_sync was called with modified text
+        # "This is foo test" -> "This is bar test"
+        self.service._translate_sync.assert_called_with(
+            "This is bar test", "ru", "en", "This is foo test"
+        )

@@ -10,10 +10,12 @@ import sys
 from dotenv import load_dotenv
 from telegram import (
     BotCommand,
+    BotCommandScopeAllChatAdministrators,
     BotCommandScopeAllGroupChats,
     BotCommandScopeAllPrivateChats,
     InlineKeyboardButton,
     InlineKeyboardMarkup,
+    Message,
     Update,
 )
 from telegram.constants import ParseMode
@@ -411,7 +413,11 @@ async def tts_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 
     await query.answer()
 
-    text = query.message.text
+    message = query.message
+    if not message or not isinstance(message, Message):
+        return
+
+    text = message.text
     if not text:
         return
 
@@ -422,7 +428,7 @@ async def tts_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     if "\n" in text:
         text = text.split("\n")[-1].strip()
 
-    chat_id = query.message.chat_id
+    chat_id = message.chat_id
     l1, l2 = db.get_languages(chat_id)
 
     # Simple heuristic for language detection to decide which voice to use
@@ -449,7 +455,7 @@ async def tts_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     try:
         file_path = await translator_service.generate_audio(text, lang)
         if file_path:
-            await query.message.reply_voice(voice=open(file_path, "rb"))
+            await message.reply_voice(voice=open(file_path, "rb"))
             os.remove(file_path)
     except Exception as e:
         logger.error(f"TTS error: {e}")
@@ -528,6 +534,11 @@ async def post_init(application: Application) -> None:
     # Set commands for group chats
     await application.bot.set_my_commands(
         commands, scope=BotCommandScopeAllGroupChats()
+    )
+
+    # Set commands for group chat administrators
+    await application.bot.set_my_commands(
+        commands, scope=BotCommandScopeAllChatAdministrators()
     )
 
     logger.info("Bot commands set successfully for all scopes.")
