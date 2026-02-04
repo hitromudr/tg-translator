@@ -173,6 +173,13 @@ async def voice_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
             "en": "This is a test of the selected voice.",
             "uk": "Це тест вибраного голосу.",
             "ua": "Це тест вибраного голосу.",
+            "de": "Dies ist ein Test der ausgewählten Stimme.",
+            "es": "Esta es una prueba de la voz seleccionada.",
+            "fr": "Ceci est un test de la voix sélectionnée.",
+            "pl": "To jest test wybranego głosu.",
+            "it": "Questa è una prova della voce selezionata.",
+            "pt": "Este é um teste da voz selecionada.",
+            "tr": "Bu seçilen sesin bir testidir.",
         }
         test_text = text_map.get(lang, "This is a test of the selected voice.")
 
