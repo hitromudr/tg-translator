@@ -2,7 +2,7 @@ import io
 import logging
 import os
 
-from telegram import BotCommandScopeChat, Update
+from telegram import Update
 from telegram.constants import ParseMode
 from telegram.ext import ContextTypes
 
@@ -20,16 +20,6 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     db = context.bot_data["db"]
     db.set_mode(update.effective_chat.id, "auto")
 
-    # Force update commands for this specific chat
-    try:
-        await context.bot.set_my_commands(
-            BOT_COMMANDS, scope=BotCommandScopeChat(update.effective_chat.id)
-        )
-    except Exception as e:
-        logger.error(
-            f"Failed to refresh commands for chat {update.effective_chat.id}: {e}"
-        )
-
     await update.message.reply_text(
         "Привет! Я бот-переводчик. Я автоматически перевожу сообщения в этом чате.\n"
         "Hi! I am a translator bot. I automatically translate messages in this chat."
@@ -40,16 +30,6 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     """Send a help message when the command /help is issued."""
     if not update.message or not update.effective_chat:
         return
-
-    # Force update commands for this specific chat
-    try:
-        await context.bot.set_my_commands(
-            BOT_COMMANDS, scope=BotCommandScopeChat(update.effective_chat.id)
-        )
-    except Exception as e:
-        logger.error(
-            f"Failed to refresh commands for chat {update.effective_chat.id}: {e}"
-        )
 
     await update.message.reply_text(
         "🤖 <b>Справка / Help</b>\n\n"
@@ -118,16 +98,6 @@ async def voice_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     db = context.bot_data["db"]
     service = context.bot_data["translator_service"]
     chat_id = update.effective_chat.id
-
-    # Force update commands for this specific chat
-    try:
-        await context.bot.set_my_commands(
-            BOT_COMMANDS, scope=BotCommandScopeChat(update.effective_chat.id)
-        )
-    except Exception as e:
-        logger.error(
-            f"Failed to refresh commands for chat {update.effective_chat.id}: {e}"
-        )
 
     if not args:
         current_gender = db.get_voice_gender(chat_id)
