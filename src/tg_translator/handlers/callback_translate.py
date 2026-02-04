@@ -88,13 +88,12 @@ async def translate_callback(
 
         # Format output
         safe_translation = html.escape(translation)
-        spoiler_text = f'<span class="tg-spoiler">{safe_translation}</span>'
 
-        final_text = spoiler_text
+        final_text = safe_translation
         if is_voice:
             # Show transcription AND translation
             safe_transcription = html.escape(text_to_use)
-            final_text = f"🎤 <i>{safe_transcription}</i>\n{spoiler_text}"
+            final_text = f"🎤 <i>{safe_transcription}</i>\n{safe_translation}"
 
         # Add Speak button for the translated text
         keyboard = [[InlineKeyboardButton("🔊 Speak", callback_data="speak")]]

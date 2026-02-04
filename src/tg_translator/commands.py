@@ -9,4 +9,5 @@ BOT_COMMANDS = [
     BotCommand("lang", "Settings / Языки"),
     BotCommand("voice", "Voice gender / Голос"),
     BotCommand("clean", "Cleanup / Уборка"),
+    BotCommand("status", "Status / Статус"),
 ]

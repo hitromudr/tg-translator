@@ -26,6 +26,7 @@ from tg_translator.handlers.admin import (
     help_command,
     mute_command,
     start_command,
+    status_command,
     stop_command,
     voice_command,
 )
@@ -84,8 +85,13 @@ def main() -> None:
     translator_service = TranslatorService(db=db)
 
     # Create the Application and pass it your bot's token.
-    # Set higher timeouts to avoid connection issues
-    request = HTTPXRequest(connect_timeout=20.0, read_timeout=20.0, write_timeout=20.0)
+    # Set higher timeouts and pool size to avoid connection issues with proxy
+    request = HTTPXRequest(
+        connect_timeout=30.0,
+        read_timeout=30.0,
+        write_timeout=30.0,
+        connection_pool_size=20,
+    )
     application = (
         Application.builder().token(token).request(request).post_init(post_init).build()
     )
@@ -103,6 +109,7 @@ def main() -> None:
     application.add_handler(CommandHandler("lang", lang_command))
     application.add_handler(CommandHandler("voice", voice_command))
     application.add_handler(CommandHandler("clean", clean_command))
+    application.add_handler(CommandHandler("status", status_command))
 
     application.add_handler(
         CallbackQueryHandler(

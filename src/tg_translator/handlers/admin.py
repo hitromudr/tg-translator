@@ -2,7 +2,7 @@ import io
 import logging
 import os
 
-from telegram import Update
+from telegram import BotCommandScopeChat, Update
 from telegram.constants import ParseMode
 from telegram.ext import ContextTypes
 
@@ -20,6 +20,16 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     db = context.bot_data["db"]
     db.set_mode(update.effective_chat.id, "auto")
 
+    # Force update commands for this specific chat
+    try:
+        await context.bot.set_my_commands(
+            BOT_COMMANDS, scope=BotCommandScopeChat(update.effective_chat.id)
+        )
+    except Exception as e:
+        logger.error(
+            f"Failed to refresh commands for chat {update.effective_chat.id}: {e}"
+        )
+
     await update.message.reply_text(
         "Привет! Я бот-переводчик. Я автоматически перевожу сообщения в этом чате.\n"
         "Hi! I am a translator bot. I automatically translate messages in this chat."
@@ -30,6 +40,16 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     """Send a help message when the command /help is issued."""
     if not update.message or not update.effective_chat:
         return
+
+    # Force update commands for this specific chat
+    try:
+        await context.bot.set_my_commands(
+            BOT_COMMANDS, scope=BotCommandScopeChat(update.effective_chat.id)
+        )
+    except Exception as e:
+        logger.error(
+            f"Failed to refresh commands for chat {update.effective_chat.id}: {e}"
+        )
 
     await update.message.reply_text(
         "🤖 <b>Справка / Help</b>\n\n"
@@ -47,6 +67,7 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         "• <code>/dict list</code> — Список / List.\n"
         "• <code>/dict export</code> | <code>import</code> — Бэкап / Backup.\n\n"
         "🌍 <b>Настройки / Settings:</b>\n"
+        "• <code>/status</code> — Статус и настройки / Status & settings.\n"
         "• <code>/lang set ru en</code> — Пара языков / Language pair.\n"
         "• <code>/clean</code> — Очистка сообщений бота / Clean bot messages.",
         parse_mode=ParseMode.HTML,
@@ -268,6 +289,49 @@ async def voice_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         await update.message.reply_text(
             "Unknown command. Use: male, female, list, test, set, reset."
         )
+
+
+async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Show current settings and status."""
+    if not update.message or not update.effective_chat:
+        return
+
+    chat_id = update.effective_chat.id
+    db = context.bot_data["db"]
+
+    # Gather data
+    mode = db.get_mode(chat_id)
+    lang_primary, lang_secondary = db.get_languages(chat_id)
+    voice_gender = db.get_voice_gender(chat_id)
+
+    # Dictionary stats
+    # get_terms expects lang_pair string (sorted)
+    langs = sorted([lang_primary, lang_secondary])
+    lang_pair = f"{langs[0]}-{langs[1]}"
+    terms = db.get_terms(chat_id, lang_pair)
+    dict_count = len(terms) if terms else 0
+
+    # Voice Presets
+    presets_info = []
+    for lang in [lang_primary, lang_secondary]:
+        preset = db.get_voice_preset(chat_id, lang, voice_gender)
+        if preset:
+            presets_info.append(f"{lang.upper()}: {preset}")
+
+    presets_str = ", ".join(presets_info) if presets_info else "Default"
+
+    # Status Emoji
+    status_emoji = "🟢" if mode == "auto" else ("🟡" if mode == "interactive" else "🔴")
+
+    msg = (
+        f"📊 <b>Status:</b>\n\n"
+        f"State: {status_emoji} <b>{mode.upper()}</b>\n"
+        f"Languages: <b>{lang_primary.upper()} ↔ {lang_secondary.upper()}</b>\n"
+        f"Voice: <b>{voice_gender.capitalize()}</b> ({presets_str})\n"
+        f"Dictionary: <b>{dict_count}</b> terms"
+    )
+
+    await update.message.reply_text(msg, parse_mode=ParseMode.HTML)
 
 
 async def clean_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:

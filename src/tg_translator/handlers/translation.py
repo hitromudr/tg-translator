@@ -63,14 +63,13 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     if translation and translation != original_text:
         # We reply to the original message with the translation
         safe_translation = html.escape(translation)
-        spoiler_text = f'<span class="tg-spoiler">{safe_translation}</span>'
 
         # TTS Button
         keyboard = [[InlineKeyboardButton("🔊 Speak", callback_data="speak")]]
         reply_markup = InlineKeyboardMarkup(keyboard)
 
         await update.message.reply_text(
-            spoiler_text, parse_mode=ParseMode.HTML, reply_markup=reply_markup
+            safe_translation, parse_mode=ParseMode.HTML, reply_markup=reply_markup
         )
         logger.info(f"Sent translation: {translation[:50]}...")
     else:
@@ -153,9 +152,7 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 
             if translation and translation.lower() != transcription.lower():
                 safe_translation = html.escape(translation)
-                response_parts.append(
-                    f'<span class="tg-spoiler">{safe_translation}</span>'
-                )
+                response_parts.append(safe_translation)
 
             # TTS Button
             keyboard = [[InlineKeyboardButton("🔊 Speak", callback_data="speak")]]
