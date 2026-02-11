@@ -1,3 +1,4 @@
+import os
 import unittest
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -6,6 +7,12 @@ from tg_translator.translator_service import TranslatorService
 
 class TestTranslatorService(unittest.TestCase):
     def setUp(self):
+        # Mock environment variables to prevent real API calls (Groq)
+        self.env_patcher = patch.dict(
+            os.environ, {"GROQ_API_KEY": "", "GROK_API_KEY": ""}
+        )
+        self.env_patcher.start()
+
         self.service = TranslatorService()
         # Patch GoogleTranslator at the module level where it is imported
         self.patcher = patch("tg_translator.translator_service.GoogleTranslator")
@@ -14,6 +21,7 @@ class TestTranslatorService(unittest.TestCase):
     def tearDown(self):
         self.patcher.stop()
         self.service.shutdown()
+        self.env_patcher.stop()
 
     def test_normalize_language_code(self):
         # Setup mock for get_supported_languages used inside normalize_language_code

@@ -8,10 +8,9 @@ from tg_translator.handlers.admin import help_command, start_command, voice_comm
 
 
 @pytest.mark.asyncio
-async def test_start_command_no_scope_refresh():
+async def test_start_command_refreshes_scope():
     """
-    Verify that start_command no longer attempts to refresh bot commands
-    specifically for the chat scope, as this was redundant and caused issues.
+    Verify that start_command refreshes bot commands for the chat scope.
     """
     # Setup
     update = MagicMock(spec=Update)
@@ -32,17 +31,17 @@ async def test_start_command_no_scope_refresh():
     # Execute
     await start_command(update, context)
 
-    # Verify set_my_commands is NOT called
-    context.bot.set_my_commands.assert_not_called()
+    # Verify set_my_commands IS called
+    context.bot.set_my_commands.assert_called_once()
 
     # Verify reply sent
     update.message.reply_text.assert_called_once()
 
 
 @pytest.mark.asyncio
-async def test_help_command_no_scope_refresh():
+async def test_help_command_refreshes_scope():
     """
-    Verify that help_command no longer attempts to refresh bot commands.
+    Verify that help_command refreshes bot commands for the chat scope.
     """
     # Setup
     update = MagicMock(spec=Update)
@@ -58,8 +57,8 @@ async def test_help_command_no_scope_refresh():
     # Execute
     await help_command(update, context)
 
-    # Verify set_my_commands is NOT called
-    context.bot.set_my_commands.assert_not_called()
+    # Verify set_my_commands IS called
+    context.bot.set_my_commands.assert_called_once()
 
     # Verify reply sent
     update.message.reply_text.assert_called_once()

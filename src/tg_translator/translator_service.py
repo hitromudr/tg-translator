@@ -112,6 +112,7 @@ class TranslatorService:
 
             completion = self.groq_client.chat.completions.create(
                 model=model,
+                timeout=15.0,  # Add timeout to prevent hanging
                 messages=[
                     {
                         "role": "system",
@@ -195,6 +196,8 @@ class TranslatorService:
                 # 3. If it stays same, Source is likely Primary. Target -> Secondary.
 
                 to_primary = GoogleTranslator(source="auto", target=primary_lang)
+                # Deep-translator doesn't have a reliable built-in timeout in all versions
+                # so we rely on the thread pool executor and global app timeouts
                 res_prim = cast(str, to_primary.translate(sample_text))
 
                 is_source_primary = False
@@ -220,7 +223,8 @@ class TranslatorService:
 
             # 5. Fallback: Translate actual text to determined target using Google
             translator = GoogleTranslator(source="auto", target=target_lang)
-            return cast(str, translator.translate(text))
+            result = cast(str, translator.translate(text))
+            return result
 
         except Exception as e:
             logger.error(f"Translation service error: {e}")

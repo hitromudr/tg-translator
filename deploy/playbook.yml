@@ -85,6 +85,7 @@
           ExecStart={{ venv_dir }}/bin/python -m tg_translator.main
           Restart=always
           RestartSec=10
+          WatchdogSec=60
 
           [Install]
           WantedBy=multi-user.target
@@ -104,7 +105,7 @@
           User=root
           WorkingDirectory={{ app_dir }}
           EnvironmentFile=-{{ app_dir }}/.env
-          ExecStart={{ venv_dir }}/bin/uvicorn tg_translator.api:app --host 127.0.0.1 --port 8090 --workers 1
+          ExecStart={{ venv_dir }}/bin/uvicorn tg_translator.api:app --host 172.17.0.1 --port 8090 --workers 2
           Restart=always
           RestartSec=10
 

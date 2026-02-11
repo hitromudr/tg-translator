@@ -1,13 +1,14 @@
 import logging
 import os
 import shutil
+import time
 import uuid
 from typing import Optional
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile
-from fastapi.responses import FileResponse
-from pydantic import BaseModel
+from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
+from fastapi.responses import FileResponse, JSONResponse
+from pydantic import BaseModel, Field
 
 from tg_translator.db import Database
 from tg_translator.translator_service import TranslatorService
@@ -34,18 +35,72 @@ db = Database()
 service = TranslatorService(db=db)
 
 
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    start_time = time.time()
+    response = await call_next(request)
+    process_time = (time.time() - start_time) * 1000
+    formatted_process_time = "{0:.2f}".format(process_time)
+    logger.info(
+        f"RID: {uuid.uuid4().hex[:8]} | {request.method} {request.url.path} | "
+        f"Status: {response.status_code} | Time: {formatted_process_time}ms"
+    )
+    return response
+
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    logger.error(f"Unhandled exception: {exc}", exc_info=True)
+    return JSONResponse(
+        status_code=500,
+        content={"detail": "Internal Server Error", "message": str(exc)},
+    )
+
+
 # --- Data Models ---
 class TranslateRequest(BaseModel):
-    text: str
-    source_lang: str = "auto"
-    target_lang: str = "en"
-    chat_id: Optional[str] = None  # Optional context for dictionary
+    text: str = Field(..., description="Text to translate")
+    source_lang: str = Field(
+        "auto", description="Source language code (e.g., 'ru', 'en') or 'auto'"
+    )
+    target_lang: str = Field(
+        "en", description="Target language code (e.g., 'en', 'es')"
+    )
+    chat_id: Optional[str] = Field(
+        None, description="Optional chat/user ID for custom dictionary lookup"
+    )
 
 
 class TTSRequest(BaseModel):
-    text: str
-    lang: str
-    gender: str = "male"  # male/female
+    text: str = Field(..., description="Text to synthesize")
+    lang: str = Field(..., description="Language code (ru, en, de, es, fr, ua)")
+    gender: str = Field(
+        "male", description="Preferred voice gender ('male' or 'female')"
+    )
+
+
+class LanguageInfo(BaseModel):
+    code: str
+    name: str
+
+
+class SpeakerInfo(BaseModel):
+    name: str
+    gender: str
+
+
+class VoicesResponse(BaseModel):
+    language: str
+    speakers: list[SpeakerInfo]
+
+
+class ChatStatusResponse(BaseModel):
+    chat_id: str
+    mode: str
+    languages: list[str]
+    voice_gender: str
+    dictionary_count: int
+    presets: dict[str, str]
 
 
 class DictAddRequest(BaseModel):
@@ -63,15 +118,105 @@ class DictRemoveRequest(BaseModel):
     target_lang: str = "en"
 
 
+# --- Metadata Constants ---
+# Extracted from Silero configuration and handlers
+SPEAKERS_DATA = {
+    "ru": [
+        {"name": "aidar", "gender": "male"},
+        {"name": "baya", "gender": "female"},
+        {"name": "kseniya", "gender": "female"},
+        {"name": "xenia", "gender": "female"},
+        {"name": "eugene", "gender": "male"},
+        {"name": "random", "gender": "unknown"},
+    ],
+    "ua": [{"name": "mykyta", "gender": "male"}],
+    "uk": [{"name": "mykyta", "gender": "male"}],
+    "de": [{"name": "thorsten", "gender": "male"}],
+    "es": [{"name": "es_0", "gender": "male"}],
+    "fr": [
+        {"name": "fr_0", "gender": "male"},
+        {"name": "fr_1", "gender": "female"},
+        {"name": "fr_2", "gender": "male"},
+        {"name": "fr_3", "gender": "male"},
+        {"name": "fr_4", "gender": "male"},
+        {"name": "fr_5", "gender": "female"},
+    ],
+}
+
+
 # --- Endpoints ---
 
 
-@app.get("/health")
+@app.get("/health", tags=["System"])
 async def health_check():
     return {"status": "ok", "service": "tg-translator-ai"}
 
 
-@app.post("/translate")
+@app.get("/languages", response_model=list[LanguageInfo], tags=["Metadata"])
+async def list_languages():
+    """Returns a list of all supported translation languages."""
+    supported = service.get_supported_languages()
+    return [
+        LanguageInfo(code=code, name=name.title())
+        for name, code in sorted(supported.items())
+    ]
+
+
+@app.get("/voices/{lang_code}", response_model=VoicesResponse, tags=["Metadata"])
+async def list_voices(lang_code: str):
+    """
+    Returns available TTS speakers for a specific language.
+    Note: 'en' (English) returns a generic list en_0..en_117.
+    """
+    lang = lang_code.lower()
+    if lang == "en":
+        speakers = [SpeakerInfo(name=f"en_{i}", gender="unknown") for i in range(118)]
+        return VoicesResponse(language="en", speakers=speakers)
+
+    if lang in SPEAKERS_DATA:
+        speakers = [SpeakerInfo(**s) for s in SPEAKERS_DATA[lang]]
+        return VoicesResponse(language=lang, speakers=speakers)
+
+    raise HTTPException(
+        status_code=404,
+        detail=f"No high-quality TTS voices found for language: {lang_code}",
+    )
+
+
+@app.get("/status/{chat_id}", response_model=ChatStatusResponse, tags=["Metadata"])
+async def get_chat_status(chat_id: str):
+    """
+    Retrieves the current settings for a specific chat_id.
+    Includes translation mode, language pair, and voice preferences.
+    """
+    mode = db.get_mode(chat_id)
+    l1, l2 = db.get_languages(chat_id)
+    gender = db.get_voice_gender(chat_id)
+
+    # Dictionary count
+    langs = sorted([l1, l2])
+    lang_pair = f"{langs[0]}-{langs[1]}"
+    terms = db.get_terms(chat_id, lang_pair)
+    dict_count = len(terms) if terms else 0
+
+    # Presets
+    presets = {}
+    for lang in [l1, l2]:
+        preset = db.get_voice_preset(chat_id, lang, gender)
+        if preset:
+            presets[lang] = preset
+
+    return ChatStatusResponse(
+        chat_id=chat_id,
+        mode=mode,
+        languages=[l1, l2],
+        voice_gender=gender,
+        dictionary_count=dict_count,
+        presets=presets,
+    )
+
+
+@app.post("/translate", tags=["Core"])
 async def translate_text(req: TranslateRequest):
     """
     Smart Translation endpoint.
@@ -119,7 +264,7 @@ async def translate_text(req: TranslateRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.post("/stt")
+@app.post("/stt", tags=["Core"])
 async def speech_to_text(file: UploadFile = File(...)):
     """
     Speech-to-Text endpoint.
@@ -158,7 +303,7 @@ async def speech_to_text(file: UploadFile = File(...)):
                 pass
 
 
-@app.post("/tts")
+@app.post("/tts", tags=["Core"])
 async def text_to_speech(req: TTSRequest):
     """
     Text-to-Speech endpoint.
@@ -196,7 +341,7 @@ def remove_file(path: str):
         pass
 
 
-@app.post("/dict/add")
+@app.post("/dict/add", tags=["Dictionary"])
 async def add_term(req: DictAddRequest):
     """Add a term to the custom dictionary."""
     langs = sorted([req.source_lang, req.target_lang])
@@ -217,7 +362,7 @@ async def add_term(req: DictAddRequest):
     return {"status": "ok", "added_count": count}
 
 
-@app.post("/dict/remove")
+@app.post("/dict/remove", tags=["Dictionary"])
 async def remove_term(req: DictRemoveRequest):
     """Remove a term from the custom dictionary."""
     langs = sorted([req.source_lang, req.target_lang])
@@ -229,7 +374,7 @@ async def remove_term(req: DictRemoveRequest):
         raise HTTPException(status_code=404, detail="Term not found")
 
 
-@app.get("/dict/list/{chat_id}")
+@app.get("/dict/list/{chat_id}", tags=["Dictionary"])
 async def list_terms(chat_id: str, source_lang: str = "ru", target_lang: str = "en"):
     """List terms for a chat and language pair."""
     langs = sorted([source_lang, target_lang])

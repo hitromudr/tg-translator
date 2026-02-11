@@ -59,6 +59,7 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         "• /stop — <b>Выкл</b> (бот спит / bot disabled).\n\n"
         "🗣 <b>Голос / Voice:</b>\n"
         "• <code>/voice male</code> | <code>female</code> — Пол голоса / Voice gender.\n"
+        "• <code>/voice list [lang]</code> — Список голосов / List voices.\n"
         "• <code>/voice test en en_45</code> — Тест спикера / Test specific speaker.\n"
         "• <code>/voice set en male en_45</code> — Назначить спикера / Set preset.\n\n"
         "📖 <b>Словарь / Dictionary:</b>\n"

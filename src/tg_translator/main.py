@@ -1,5 +1,6 @@
 import logging
 import os
+import socket
 import sys
 
 from dotenv import load_dotenv
@@ -14,6 +15,7 @@ from telegram.ext import (
     Application,
     CallbackQueryHandler,
     CommandHandler,
+    ContextTypes,
     MessageHandler,
     filters,
 )
@@ -47,6 +49,28 @@ logging.getLogger("httpx").setLevel(logging.WARNING)
 logger = logging.getLogger(__name__)
 
 
+def systemd_notify(message: str) -> None:
+    """Notify systemd watchdog."""
+    notify_socket = os.getenv("NOTIFY_SOCKET")
+    if not notify_socket:
+        return
+
+    if notify_socket.startswith("@"):
+        notify_socket = "\0" + notify_socket[1:]
+
+    try:
+        with socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM) as sock:
+            sock.connect(notify_socket)
+            sock.sendall(message.encode())
+    except Exception as e:
+        logger.warning(f"Failed to notify systemd: {e}")
+
+
+async def heartbeat_job(context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Send heartbeat to systemd watchdog."""
+    systemd_notify("WATCHDOG=1")
+
+
 async def post_init(application: Application) -> None:
     """Set up the bot's commands."""
     # Set commands for default scope
@@ -67,7 +91,17 @@ async def post_init(application: Application) -> None:
         BOT_COMMANDS, scope=BotCommandScopeAllChatAdministrators()
     )
 
+    # Set up watchdog heartbeat (every 30s)
+    if os.getenv("NOTIFY_SOCKET") and application.job_queue:
+        application.job_queue.run_repeating(heartbeat_job, interval=30, first=10)
+        logger.info("Systemd watchdog heartbeat enabled.")
+
     logger.info("Bot commands set successfully for all scopes.")
+
+
+async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Log the error and send a telegram message to notify the developer."""
+    logger.error("Exception while handling an update:", exc_info=context.error)
 
 
 def main() -> None:
@@ -87,14 +121,18 @@ def main() -> None:
     # Create the Application and pass it your bot's token.
     # Set higher timeouts and pool size to avoid connection issues with proxy
     request = HTTPXRequest(
-        connect_timeout=30.0,
-        read_timeout=30.0,
-        write_timeout=30.0,
-        connection_pool_size=20,
+        connect_timeout=10.0,
+        read_timeout=15.0,
+        write_timeout=15.0,
+        pool_timeout=10.0,
+        connection_pool_size=50,  # Increased from 20 to 50
     )
     application = (
         Application.builder().token(token).request(request).post_init(post_init).build()
     )
+
+    # Add error handler
+    application.add_error_handler(error_handler)
 
     # Inject dependencies into bot_data so handlers can access them
     application.bot_data["db"] = db

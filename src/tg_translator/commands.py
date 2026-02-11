@@ -7,7 +7,7 @@ BOT_COMMANDS = [
     BotCommand("help", "Help / Справка"),
     BotCommand("dict", "Manage dictionary / Словарь"),
     BotCommand("lang", "Settings / Языки"),
-    BotCommand("voice", "Voice gender / Голос"),
+    BotCommand("voice", "Voice settings (list) / Голос"),
     BotCommand("clean", "Cleanup / Уборка"),
     BotCommand("status", "Status / Статус"),
 ]
